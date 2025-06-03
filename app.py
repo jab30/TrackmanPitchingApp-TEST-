@@ -344,7 +344,7 @@ app_ui = ui.page_fluid(
             ),
             ui.output_table("ksu_summary_table"),
             ui.br(),
-            ui.h3("🥎 Opponent Catcher Summary"),
+            ui.h3("Opponent Catcher Summary"),
             ui.output_table("oppcatcher_summary_table"),
             ui.br(),
             ui.h3("📈 Analysis Plots"),
