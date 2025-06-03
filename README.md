@@ -1,5 +1,5 @@
 ---
-title: Shiny for Python template
+title: TrackmanCatchingApp
 emoji: 🌍
 colorFrom: yellow
 colorTo: indigo
