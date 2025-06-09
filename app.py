@@ -256,7 +256,7 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True):
+def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, show_heatmap: bool = True, show_dots: bool = True):
     """Create a larger, square plot for strike zone visualization with KDE heatmap."""
     fig, ax = plt.subplots(figsize=(12, 12))
 
@@ -298,7 +298,7 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True):
 
     if not pts.empty:
         # Create heatmap if enabled
-        if input.show_heatmap():
+        if show_heatmap:
             # Create a 2D histogram
             x = pts["PlateLocSide"]
             y = pts["PlateLocHeight"]
@@ -324,7 +324,7 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True):
             cbar.set_label('Density', fontsize=12)
         
         # Add pitch type points if enabled
-        if input.show_dots():
+        if show_dots:
             for ptype in pts[pitch_type_col].dropna().unique():
                 subset = pts[pts[pitch_type_col] == ptype].dropna(subset=["PlateLocSide", "PlateLocHeight"])
                 if not subset.empty:
@@ -341,7 +341,7 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True):
     ax.set_xticks([])
     ax.set_yticks([])
 
-    if not pts.empty and input.show_dots():
+    if not pts.empty and show_dots:
         fig.subplots_adjust(right=0.85)
         ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=10)
 
@@ -533,7 +533,13 @@ def server(input, output, session):
         if df is None:
             return create_strike_zone_plot(pd.DataFrame(), "Strikes Stolen")
         df_ss = df[df["StolenStrike"] == 1] if "StolenStrike" in df.columns else pd.DataFrame()
-        return create_strike_zone_plot(df_ss, "Strikes Stolen", stolen=True)
+        return create_strike_zone_plot(
+            df_ss, 
+            "Strikes Stolen", 
+            stolen=True,
+            show_heatmap=input.show_heatmap(),
+            show_dots=input.show_dots()
+        )
 
     @output
     @render.plot
@@ -542,7 +548,13 @@ def server(input, output, session):
         if df is None:
             return create_strike_zone_plot(pd.DataFrame(), "Strikes Lost", stolen=False)
         df_ls = df[df["StrikeLost"] == 1] if "StrikeLost" in df.columns else pd.DataFrame()
-        return create_strike_zone_plot(df_ls, "Strikes Lost", stolen=False)
+        return create_strike_zone_plot(
+            df_ls, 
+            "Strikes Lost", 
+            stolen=False,
+            show_heatmap=input.show_heatmap(),
+            show_dots=input.show_dots()
+        )
 
     @reactive.Calc
     def throwlog_df():
