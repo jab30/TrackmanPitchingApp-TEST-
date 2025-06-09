@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import glob
 
 # Define pitch color mapping (unchanged)
 pitch_colors = {
@@ -20,6 +21,11 @@ pitch_colors = {
     "PitchOut": '#472C30'
 }
 
+# Load all CSV files from the TrackmanCSV's folder
+csv_folder = "TrackmanCSV's"
+csv_paths = glob.glob(os.path.join(csv_folder, "*.csv"))
+if not csv_paths:
+    raise RuntimeError(f"No CSV files found in '{csv_folder}' folder.")
 
 def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -318,9 +324,6 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True):
 app_ui = ui.page_fluid(
     ui.layout_sidebar(
         ui.sidebar(
-            ui.h4("📊 Upload Trackman CSV"),
-            ui.input_file("file1", "Choose CSV File", accept=[".csv"]),
-            ui.hr(),
             ui.h4("🔍 Filter Options"),
             ui.input_date_range(
                 "date_range",
@@ -381,37 +384,36 @@ app_ui = ui.page_fluid(
 def server(input, output, session):
     @reactive.Calc
     def raw_data():
-        """Read uploaded CSV and compute indicators - cached for performance"""
-        fileinfo = input.file1()
-        if fileinfo is None:
-            return None
-
+        """Read and combine all CSV files from the TrackmanCSV's folder"""
         try:
-            if isinstance(fileinfo, list) and len(fileinfo) > 0:
-                file_path = fileinfo[0]["datapath"]
-            elif isinstance(fileinfo, dict):
-                file_path = fileinfo["datapath"]
-            else:
+            dfs = []
+            for file_path in csv_paths:
+                try:
+                    df = pd.read_csv(file_path)
+                except UnicodeDecodeError:
+                    df = pd.read_csv(file_path, encoding="latin-1")
+                except Exception:
+                    df = pd.read_csv(file_path, sep=None, engine="python")
+                
+                # Add filename as a column to track source
+                df['SourceFile'] = os.path.basename(file_path)
+                dfs.append(df)
+            
+            if not dfs:
                 return None
-
-            if not os.path.exists(file_path):
-                return None
-
-            try:
-                df = pd.read_csv(file_path)
-            except UnicodeDecodeError:
-                df = pd.read_csv(file_path, encoding="latin-1")
-            except Exception:
-                df = pd.read_csv(file_path, sep=None, engine="python")
-
+                
+            # Combine all dataframes
+            combined_df = pd.concat(dfs, ignore_index=True)
+            
             # Convert date column if it exists
-            if "Date" in df.columns:
-                df["Date"] = pd.to_datetime(df["Date"], errors='coerce')
+            if "Date" in combined_df.columns:
+                combined_df["Date"] = pd.to_datetime(combined_df["Date"], errors='coerce')
 
-            df = compute_indicators(df)
-            return df
+            combined_df = compute_indicators(combined_df)
+            return combined_df
 
-        except Exception:
+        except Exception as e:
+            print(f"Error loading data: {str(e)}")
             return None
 
     @reactive.Calc
@@ -466,7 +468,7 @@ def server(input, output, session):
 
     @reactive.Effect
     def update_catcher_choices():
-        df = filtered_data()
+        df = raw_data()
         if df is None:
             return
         catcher_col = next(
@@ -615,4 +617,3 @@ app = App(app_ui, server)
 
 if __name__ == "__main__":
     app.run()
-#bruh
