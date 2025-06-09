@@ -309,19 +309,20 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
             # Smooth the histogram using Gaussian filter
             h = gaussian_filter(h, sigma=1.0)
             
-            # Create the heatmap
+            # Create the heatmap with red-blue colormap
             im = ax.imshow(
                 h.T,
                 origin='lower',
                 extent=[-2, 2, 0, 4],
                 aspect='auto',
-                cmap='YlOrRd',
+                cmap='RdBu_r',  # Red-Blue colormap (reversed so red is hot)
                 alpha=0.7
             )
             
             # Add colorbar
             cbar = plt.colorbar(im, ax=ax)
             cbar.set_label('Density', fontsize=12)
+            cbar.ax.set_xticklabels([])  # Remove colorbar ticks
         
         # Add pitch type points if enabled
         if show_dots:
@@ -340,6 +341,7 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
     ax.set_title(title, fontsize=16, fontweight="bold")
     ax.set_xticks([])
     ax.set_yticks([])
+    ax.axis('off')  # Remove all axes
 
     if not pts.empty and show_dots:
         fig.subplots_adjust(right=0.85)
