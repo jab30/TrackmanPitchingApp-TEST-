@@ -332,12 +332,6 @@ app_ui = ui.page_fluid(
                 end=None
             ),
             ui.input_select(
-                "pitcher_team",
-                "Pitcher Team",
-                choices=[],
-                multiple=True,
-            ),
-            ui.input_select(
                 "catcher",
                 "Catcher",
                 choices=[],
@@ -409,6 +403,14 @@ def server(input, output, session):
             if "Date" in combined_df.columns:
                 combined_df["Date"] = pd.to_datetime(combined_df["Date"], errors='coerce')
 
+            # Filter for KEN_OWL team
+            team_col = next(
+                (c for c in combined_df.columns if "PitcherTeam" in c or "pitcher_team" in c.lower() or "team" in c.lower()),
+                None
+            )
+            if team_col:
+                combined_df = combined_df[combined_df[team_col] == "KEN_OWL"]
+
             combined_df = compute_indicators(combined_df)
             return combined_df
 
@@ -430,16 +432,6 @@ def server(input, output, session):
             end_date = pd.to_datetime(date_range[1])
             df = df[(df["Date"] >= start_date) & (df["Date"] <= end_date)]
 
-        # Apply team filter
-        teams = input.pitcher_team()
-        if teams:
-            team_col = next(
-                (c for c in df.columns if "PitcherTeam" in c or "pitcher_team" in c.lower() or "team" in c.lower()),
-                None
-            )
-            if team_col:
-                df = df[df[team_col].isin(teams)]
-
         # Apply catcher filter
         catcher = input.catcher()
         if catcher:
@@ -451,20 +443,6 @@ def server(input, output, session):
                 df = df[df[catcher_col] == catcher]
 
         return df
-
-    @reactive.Effect
-    def update_pitcher_choices():
-        df = raw_data()
-        if df is None:
-            return
-        team_col = next(
-            (c for c in df.columns if "PitcherTeam" in c or "pitcher_team" in c.lower() or "team" in c.lower()),
-            None
-        )
-        if team_col is None:
-            return
-        teams = sorted(df[team_col].dropna().astype(str).unique())
-        ui.update_select("pitcher_team", choices=teams, session=session)
 
     @reactive.Effect
     def update_catcher_choices():
