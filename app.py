@@ -342,9 +342,10 @@ app_ui = ui.page_fluid(
                 ui.output_text("ksu_summary_text"),
                 style="font-size: 18px; font-weight: bold; margin: 10px 0;"
             ),
+            ui.input_action_button("print_button", "🖨️ Print Report", class_="btn-primary"),
             ui.output_table("ksu_summary_table"),
             ui.br(),
-            ui.h3(" Opponent Catcher Summary"),
+            ui.h3("🥎 Opponent Catcher Summary"),
             ui.output_table("oppcatcher_summary_table"),
             ui.br(),
             ui.h3("📈 Analysis Plots"),
@@ -407,27 +408,18 @@ def server(input, output, session):
             return None
 
     @reactive.Effect
-    def update_catcher_choices():
+    def update_pitcher_choices():
         df = raw_data()
         if df is None:
             return
-
-        catcher_col = next((c for c in df.columns if "Catcher" in c or "catcher" in c.lower()), None)
-        team_col = next((c for c in df.columns if "PitcherTeam" in c or "team" in c.lower()), None)
-
-        if catcher_col is None:
+        team_col = next(
+            (c for c in df.columns if "PitcherTeam" in c or "pitcher_team" in c.lower() or "team" in c.lower()),
+            None
+        )
+        if team_col is None:
             return
-
-        df = df.dropna(subset=[catcher_col])
-        if team_col and team_col in df.columns:
-            df["label"] = df[team_col].astype(str) + " - " + df[catcher_col].astype(str)
-        else:
-            df["label"] = df[catcher_col].astype(str)
-
-        unique_labels = df[["label", catcher_col]].drop_duplicates().sort_values("label")
-        choices_dict = dict(zip(unique_labels["label"], unique_labels[catcher_col]))
-
-        ui.update_select("catcher", choices=choices_dict, session=session)
+        teams = sorted(df[team_col].dropna().astype(str).unique())
+        ui.update_select("pitcher_team", choices=teams, session=session)
 
     @reactive.Calc
     def filtered_by_pitcher():
@@ -461,7 +453,7 @@ def server(input, output, session):
 
     @reactive.Calc
     def catcher_data():
-        df = raw_data()
+        df = filtered_by_pitcher()
         if df is None:
             return pd.DataFrame()
         catcher = input.catcher()
@@ -627,7 +619,11 @@ def server(input, output, session):
             return pd.DataFrame({"Message": ["No PopTime data"]})
         cols = [c for c in ["PitchNo", "Catcher", "PopTime"] if c in df.columns]
         return df[cols].rename(columns={"PopTime": "Pop Time (sec)"})
-    # ———— END OF CHANGE ————
+
+    @reactive.Effect
+    def _():
+        input.print_button()
+        session.send_custom_message("print", {})
 
     # End of server()
 
