@@ -322,6 +322,12 @@ app_ui = ui.page_fluid(
             ui.input_file("file1", "Choose CSV File", accept=[".csv"]),
             ui.hr(),
             ui.h4("🔍 Filter Options"),
+            ui.input_date_range(
+                "date_range",
+                "Select Date Range",
+                start=None,
+                end=None
+            ),
             ui.input_select(
                 "pitcher_team",
                 "Pitcher Team",
@@ -345,9 +351,6 @@ app_ui = ui.page_fluid(
             ui.input_action_button("print_button", "🖨️ Print Report", class_="btn-primary"),
             ui.output_table("ksu_summary_table"),
             ui.br(),
-            ui.h3("🥎 Opponent Catcher Summary"),
-            ui.output_table("oppcatcher_summary_table"),
-            ui.br(),
             ui.h3("📈 Analysis Plots"),
             ui.navset_tab(
                 ui.nav_panel(
@@ -366,8 +369,8 @@ app_ui = ui.page_fluid(
                     ui.h4("🚀 Throw Speed Distribution"),
                     ui.output_plot("throw_speed_plot"),
                     ui.br(),
-                    ui.h4("⏱️ Pop Time Details"),      # <----- Changed label here
-                    ui.output_table("pop_time_table"),  # <----- New table output
+                    ui.h4("⏱️ Pop Time Details"),
+                    ui.output_table("pop_time_table"),
                 ),
             ),
         )
@@ -401,11 +404,51 @@ def server(input, output, session):
             except Exception:
                 df = pd.read_csv(file_path, sep=None, engine="python")
 
+            # Convert date column if it exists
+            if "Date" in df.columns:
+                df["Date"] = pd.to_datetime(df["Date"], errors='coerce')
+
             df = compute_indicators(df)
             return df
 
         except Exception:
             return None
+
+    @reactive.Calc
+    def filtered_data():
+        """Apply all filters to the data"""
+        df = raw_data()
+        if df is None:
+            return None
+
+        # Apply date filter if dates are selected
+        date_range = input.date_range()
+        if date_range and "Date" in df.columns:
+            start_date = pd.to_datetime(date_range[0])
+            end_date = pd.to_datetime(date_range[1])
+            df = df[(df["Date"] >= start_date) & (df["Date"] <= end_date)]
+
+        # Apply team filter
+        teams = input.pitcher_team()
+        if teams:
+            team_col = next(
+                (c for c in df.columns if "PitcherTeam" in c or "pitcher_team" in c.lower() or "team" in c.lower()),
+                None
+            )
+            if team_col:
+                df = df[df[team_col].isin(teams)]
+
+        # Apply catcher filter
+        catcher = input.catcher()
+        if catcher:
+            catcher_col = next(
+                (c for c in df.columns if "Catcher" in c or "catcher" in c.lower()),
+                None
+            )
+            if catcher_col:
+                df = df[df[catcher_col] == catcher]
+
+        return df
 
     @reactive.Effect
     def update_pitcher_choices():
@@ -421,25 +464,9 @@ def server(input, output, session):
         teams = sorted(df[team_col].dropna().astype(str).unique())
         ui.update_select("pitcher_team", choices=teams, session=session)
 
-    @reactive.Calc
-    def filtered_by_pitcher():
-        df = raw_data()
-        if df is None:
-            return None
-        teams = input.pitcher_team()
-        if not teams:
-            return df
-        team_col = next(
-            (c for c in df.columns if "PitcherTeam" in c or "pitcher_team" in c.lower() or "team" in c.lower()),
-            None
-        )
-        if team_col:
-            return df[df[team_col].isin(teams)]
-        return df
-
     @reactive.Effect
     def update_catcher_choices():
-        df = filtered_by_pitcher()
+        df = filtered_data()
         if df is None:
             return
         catcher_col = next(
@@ -452,24 +479,8 @@ def server(input, output, session):
         ui.update_select("catcher", choices=catchers, session=session)
 
     @reactive.Calc
-    def catcher_data():
-        df = filtered_by_pitcher()
-        if df is None:
-            return pd.DataFrame()
-        catcher = input.catcher()
-        if not catcher:
-            return df
-        catcher_col = next(
-            (c for c in df.columns if "Catcher" in c or "catcher" in c.lower()),
-            None
-        )
-        if catcher_col:
-            return df[df[catcher_col] == catcher]
-        return df
-
-    @reactive.Calc
     def ksu_summary_df():
-        df = catcher_data()
+        df = filtered_data()
         if df is None or df.empty:
             return pd.DataFrame({
                 "KSU Strikes Stolen": [0],
@@ -483,28 +494,6 @@ def server(input, output, session):
             "KSU Strikes Stolen": [stolen],
             "KSU Strikes Lost": [lost],
             "KSU Game +/-": [net]
-        })
-
-    @reactive.Calc
-    def oppcatcher_summary_df():
-        df = raw_data()
-        if df is None or df.empty:
-            return pd.DataFrame({
-                "Opp Strikes Stolen": [0],
-                "Opp Strikes Lost": [0],
-                "Opp Game +/-": [0]
-            })
-        if "BatterTeam" in df.columns:
-            opp_df = df[df["BatterTeam"] == "COA_CHA"]
-        else:
-            opp_df = pd.DataFrame()
-        stolen = int(opp_df["StolenStrike"].sum()) if not opp_df.empty and "StolenStrike" in opp_df.columns else 0
-        lost = int(opp_df["StrikeLost"].sum()) if not opp_df.empty and "StrikeLost" in opp_df.columns else 0
-        net = stolen - lost
-        return pd.DataFrame({
-            "Opp Strikes Stolen": [stolen],
-            "Opp Strikes Lost": [lost],
-            "Opp Game +/-": [net]
         })
 
     @output
@@ -524,14 +513,9 @@ def server(input, output, session):
         return ksu_summary_df()
 
     @output
-    @render.table
-    def oppcatcher_summary_table():
-        return oppcatcher_summary_df()
-
-    @output
     @render.plot
     def stolen_strikes_plot():
-        df = catcher_data()
+        df = filtered_data()
         if df is None:
             return create_strike_zone_plot(pd.DataFrame(), "Strikes Stolen")
         df_ss = df[df["StolenStrike"] == 1] if "StolenStrike" in df.columns else pd.DataFrame()
@@ -540,17 +524,16 @@ def server(input, output, session):
     @output
     @render.plot
     def lost_strikes_plot():
-        df = catcher_data()
+        df = filtered_data()
         if df is None:
             return create_strike_zone_plot(pd.DataFrame(), "Strikes Lost", stolen=False)
         df_ls = df[df["StrikeLost"] == 1] if "StrikeLost" in df.columns else pd.DataFrame()
         return create_strike_zone_plot(df_ls, "Strikes Lost", stolen=False)
 
-    # ———— START OF CHANGE ————
     @reactive.Calc
     def throwlog_df():
         """Filter by selected catcher, then keep only rows with a non-null PopTime."""
-        df = catcher_data()
+        df = filtered_data()
         if df is None or "PopTime" not in df.columns:
             return pd.DataFrame()
         df2 = df[df["PopTime"].notna()].copy()
