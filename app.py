@@ -530,6 +530,7 @@ def server(input, output, session):
 
     @output
     @render.plot
+    @reactive.event(input.show_heatmap, input.show_dots)
     def stolen_strikes_plot():
         df = filtered_data()
         if df is None:
@@ -545,6 +546,7 @@ def server(input, output, session):
 
     @output
     @render.plot
+    @reactive.event(input.show_heatmap, input.show_dots)
     def lost_strikes_plot():
         df = filtered_data()
         if df is None:
@@ -632,8 +634,8 @@ def server(input, output, session):
         return df[cols].rename(columns={"PopTime": "Pop Time (sec)"})
 
     @reactive.Effect
+    @reactive.event(input.print_button)
     def _():
-        input.print_button()
         session.send_custom_message("print", {})
 
     # End of server()
