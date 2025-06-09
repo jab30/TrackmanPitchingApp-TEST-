@@ -297,39 +297,42 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True):
         pts = df[df["StrikeLost"] == 1]
 
     if not pts.empty:
-        # Create a 2D histogram
-        x = pts["PlateLocSide"]
-        y = pts["PlateLocHeight"]
+        # Create heatmap if enabled
+        if input.show_heatmap():
+            # Create a 2D histogram
+            x = pts["PlateLocSide"]
+            y = pts["PlateLocHeight"]
+            
+            # Create a 2D histogram with more bins for better resolution
+            h, xedges, yedges = np.histogram2d(x, y, bins=50, range=[[-2, 2], [0, 4]])
+            
+            # Smooth the histogram using Gaussian filter
+            h = gaussian_filter(h, sigma=1.0)
+            
+            # Create the heatmap
+            im = ax.imshow(
+                h.T,
+                origin='lower',
+                extent=[-2, 2, 0, 4],
+                aspect='auto',
+                cmap='YlOrRd',
+                alpha=0.7
+            )
+            
+            # Add colorbar
+            cbar = plt.colorbar(im, ax=ax)
+            cbar.set_label('Density', fontsize=12)
         
-        # Create a 2D histogram with more bins for better resolution
-        h, xedges, yedges = np.histogram2d(x, y, bins=50, range=[[-2, 2], [0, 4]])
-        
-        # Smooth the histogram using Gaussian filter
-        h = gaussian_filter(h, sigma=1.0)
-        
-        # Create the heatmap
-        im = ax.imshow(
-            h.T,
-            origin='lower',
-            extent=[-2, 2, 0, 4],
-            aspect='auto',
-            cmap='YlOrRd',
-            alpha=0.7
-        )
-        
-        # Add colorbar
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label('Density', fontsize=12)
-        
-        # Add pitch type points on top of the heatmap
-        for ptype in pts[pitch_type_col].dropna().unique():
-            subset = pts[pts[pitch_type_col] == ptype].dropna(subset=["PlateLocSide", "PlateLocHeight"])
-            if not subset.empty:
-                color = pitch_colors.get(ptype, "#9C8975")
-                ax.scatter(
-                    subset["PlateLocSide"], subset["PlateLocHeight"],
-                    c=color, s=60, alpha=0.8, edgecolors="black", linewidth=0.5, label=ptype
-                )
+        # Add pitch type points if enabled
+        if input.show_dots():
+            for ptype in pts[pitch_type_col].dropna().unique():
+                subset = pts[pts[pitch_type_col] == ptype].dropna(subset=["PlateLocSide", "PlateLocHeight"])
+                if not subset.empty:
+                    color = pitch_colors.get(ptype, "#9C8975")
+                    ax.scatter(
+                        subset["PlateLocSide"], subset["PlateLocHeight"],
+                        c=color, s=60, alpha=0.8, edgecolors="black", linewidth=0.5, label=ptype
+                    )
 
     ax.set_xlim(-2, 2)
     ax.set_ylim(0, 4)
@@ -338,7 +341,7 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True):
     ax.set_xticks([])
     ax.set_yticks([])
 
-    if not pts.empty:
+    if not pts.empty and input.show_dots():
         fig.subplots_adjust(right=0.85)
         ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=10)
 
@@ -364,6 +367,10 @@ app_ui = ui.page_fluid(
                 choices=[],
                 multiple=False,
             ),
+            ui.hr(),
+            ui.h4("📊 Plot Options"),
+            ui.input_switch("show_heatmap", "Show Heatmap", value=True),
+            ui.input_switch("show_dots", "Show Individual Pitches", value=True),
             width=300,
         ),
         ui.div(
