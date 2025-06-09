@@ -323,22 +323,6 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
                 cmap='RdBu_r',  # Red-Blue colormap (reversed so red is hot)
                 alpha=0.7
             )
-            
-            # Add colorbar without label
-            cbar = plt.colorbar(im, ax=ax)
-            cbar.ax.set_xticklabels([])  # Remove colorbar ticks
-            cbar.ax.set_yticklabels([])  # Remove colorbar ticks
-        
-        # Add pitch type points if enabled
-        if show_dots:
-            for ptype in pts[pitch_type_col].dropna().unique():
-                subset = pts[pts[pitch_type_col] == ptype].dropna(subset=["PlateLocSide", "PlateLocHeight"])
-                if not subset.empty:
-                    color = pitch_colors.get(ptype, "#9C8975")
-                    ax.scatter(
-                        subset["PlateLocSide"], subset["PlateLocHeight"],
-                        c=color, s=60, alpha=0.8, edgecolors="black", linewidth=0.5, label=ptype
-                    )
 
     ax.set_xlim(-2, 2)
     ax.set_ylim(0, 4)
@@ -348,13 +332,8 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
     ax.set_yticks([])
     ax.axis('off')  # Remove all axes
 
-    if not pts.empty and show_dots:
-        # Adjust layout to maintain consistent size
-        fig.subplots_adjust(right=0.85, left=0.15, top=0.9, bottom=0.1)
-        ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=10)
-    else:
-        # Adjust layout when no legend is needed
-        fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
+    # Adjust layout for consistent size
+    fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
 
     return fig
 
