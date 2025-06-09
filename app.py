@@ -258,7 +258,12 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, show_heatmap: bool = True, show_dots: bool = True):
     """Create a larger, square plot for strike zone visualization with KDE heatmap."""
-    fig, ax = plt.subplots(figsize=(12, 12))
+    # Create figure with consistent size regardless of content
+    fig = plt.figure(figsize=(12, 12))
+    ax = fig.add_subplot(111)
+    
+    # Set the figure size explicitly
+    fig.set_size_inches(12, 12)
 
     # Draw strike zone rectangle
     strike_zone = plt.Rectangle(
@@ -304,10 +309,10 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
             y = pts["PlateLocHeight"]
             
             # Create a 2D histogram with more bins for better resolution
-            h, xedges, yedges = np.histogram2d(x, y, bins=50, range=[[-2, 2], [0, 4]])
+            h, xedges, yedges = np.histogram2d(x, y, bins=100, range=[[-2, 2], [0, 4]])
             
-            # Smooth the histogram using Gaussian filter
-            h = gaussian_filter(h, sigma=1.0)
+            # Smooth the histogram using Gaussian filter with increased sigma
+            h = gaussian_filter(h, sigma=2.0)
             
             # Create the heatmap with red-blue colormap
             im = ax.imshow(
@@ -319,10 +324,10 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
                 alpha=0.7
             )
             
-            # Add colorbar
+            # Add colorbar without label
             cbar = plt.colorbar(im, ax=ax)
-            cbar.set_label('Density', fontsize=12)
             cbar.ax.set_xticklabels([])  # Remove colorbar ticks
+            cbar.ax.set_yticklabels([])  # Remove colorbar ticks
         
         # Add pitch type points if enabled
         if show_dots:
@@ -344,8 +349,12 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
     ax.axis('off')  # Remove all axes
 
     if not pts.empty and show_dots:
-        fig.subplots_adjust(right=0.85)
+        # Adjust layout to maintain consistent size
+        fig.subplots_adjust(right=0.85, left=0.15, top=0.9, bottom=0.1)
         ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=10)
+    else:
+        # Adjust layout when no legend is needed
+        fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
 
     return fig
 
