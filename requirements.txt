@@ -3,3 +3,4 @@ pandas>=2.0
 matplotlib>=3.5
 seaborn>=0.12
 jinja2>=3.0
+scipy
