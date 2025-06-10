@@ -518,7 +518,6 @@ def server(input, output, session):
 
     @output
     @render.plot
-    @reactive.event(input.show_heatmap, input.show_dots)
     def stolen_strikes_plot():
         df = filtered_data()
         if df is None:
@@ -534,7 +533,6 @@ def server(input, output, session):
 
     @output
     @render.plot
-    @reactive.event(input.show_heatmap, input.show_dots)
     def lost_strikes_plot():
         df = filtered_data()
         if df is None:
@@ -547,6 +545,12 @@ def server(input, output, session):
             show_heatmap=input.show_heatmap(),
             show_dots=input.show_dots()
         )
+
+    @reactive.Effect
+    def _():
+        # Force plot updates when switches change
+        input.show_heatmap()
+        input.show_dots()
 
     @reactive.Calc
     def throwlog_df():
@@ -623,7 +627,8 @@ def server(input, output, session):
 
     @reactive.Effect
     @reactive.event(input.print_button)
-    def _():
+    def print_report():
+        # Send print message to browser
         session.send_custom_message("print", {})
 
     # End of server()
