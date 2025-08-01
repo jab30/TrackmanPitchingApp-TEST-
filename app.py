@@ -264,10 +264,10 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, show_heatmap: bool = True, show_dots: bool = True):
-    """Create an enhanced strike zone visualization with better aesthetics."""
-    # Create figure with dark background - LARGER SIZE
-    fig = plt.figure(figsize=(18, 16), facecolor='#1e1e1e')
+def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True, show_dots: bool = True):
+    """Create a combined strike zone visualization showing both stolen and lost strikes."""
+    # Create figure with dark background - LARGE SIZE
+    fig = plt.figure(figsize=(20, 16), facecolor='#1e1e1e')
     ax = fig.add_subplot(111, facecolor='#2d2d2d')
     
     # Enhanced strike zone with gradient effect
@@ -313,68 +313,90 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
 
     if pitch_type_col is None or "PlateLocSide" not in df.columns or "PlateLocHeight" not in df.columns:
         ax.text(
-            0.5, 0.5, f"No data available for {title}",
+            0.5, 0.5, "No data available for strike zone analysis",
             ha='center', va='center', transform=ax.transAxes, 
             fontsize=16, color='white', fontweight='bold'
         )
         ax.set_xlim(-2.5, 2.5)
         ax.set_ylim(-0.5, 4.5)
-        ax.set_title(title, fontsize=20, fontweight='bold', color='white', pad=20)
+        ax.set_title("Combined Strike Zone Analysis", fontsize=20, fontweight='bold', color='white', pad=20)
         ax.set_facecolor('#2d2d2d')
         return fig
 
-    # Filter the appropriate points
-    if stolen:
-        pts = df[df["StolenStrike"] == 1] if "StolenStrike" in df.columns else pd.DataFrame()
-        heatmap_color = 'Reds'
-    else:
-        pts = df[df["StrikeLost"] == 1] if "StrikeLost" in df.columns else pd.DataFrame()
-        heatmap_color = 'Blues'
+    # Get stolen and lost strikes data
+    stolen_pts = df[df["StolenStrike"] == 1] if "StolenStrike" in df.columns else pd.DataFrame()
+    lost_pts = df[df["StrikeLost"] == 1] if "StrikeLost" in df.columns else pd.DataFrame()
 
-    if not pts.empty:
-        # Create enhanced heatmap
-        if show_heatmap:
-            x = pts["PlateLocSide"]
-            y = pts["PlateLocHeight"]
-            
-            # Create high-resolution histogram - MUCH HIGHER RESOLUTION
-            h, xedges, yedges = np.histogram2d(x, y, bins=200, range=[[-2.5, 2.5], [-0.5, 4.5]])
-            
-            # Apply stronger smoothing
-            h = gaussian_filter(h, sigma=4.0)
-            
-            # Create the heatmap with enhanced styling
-            im = ax.imshow(
-                h.T,
-                origin='lower',
-                extent=[-2.5, 2.5, -0.5, 4.5],
-                aspect='auto',
-                cmap=heatmap_color,
-                alpha=0.7,
-                interpolation='bilinear'
-            )
-            
-            # Add colorbar with custom styling
-            cbar = plt.colorbar(im, ax=ax, shrink=0.8, aspect=20)
-            cbar.ax.tick_params(colors='white', labelsize=10)
-            cbar.set_label('Pitch Density', color='white', fontsize=12, fontweight='bold')
-            cbar.ax.yaxis.set_label_position('left')
+    # Create combined heatmap if enabled
+    if show_heatmap and (not stolen_pts.empty or not lost_pts.empty):
+        # Create separate heatmaps for stolen (positive) and lost (negative) strikes
+        if not stolen_pts.empty:
+            x_stolen = stolen_pts["PlateLocSide"]
+            y_stolen = stolen_pts["PlateLocHeight"]
+            h_stolen, xedges, yedges = np.histogram2d(x_stolen, y_stolen, bins=200, range=[[-2.5, 2.5], [-0.5, 4.5]])
+            h_stolen = gaussian_filter(h_stolen, sigma=4.0)
+        else:
+            h_stolen = np.zeros((200, 200))
+
+        if not lost_pts.empty:
+            x_lost = lost_pts["PlateLocSide"]
+            y_lost = lost_pts["PlateLocHeight"]
+            h_lost, xedges, yedges = np.histogram2d(x_lost, y_lost, bins=200, range=[[-2.5, 2.5], [-0.5, 4.5]])
+            h_lost = gaussian_filter(h_lost, sigma=4.0)
+        else:
+            h_lost = np.zeros((200, 200))
+
+        # Combine heatmaps: positive values for stolen strikes, negative for lost strikes
+        h_combined = h_stolen - h_lost
         
-        # Add enhanced pitch type points
-        if show_dots:
-            pitch_counts = {}
-            for ptype in pts[pitch_type_col].dropna().unique():
-                subset = pts[pts[pitch_type_col] == ptype].dropna(subset=["PlateLocSide", "PlateLocHeight"])
+        # Create the combined heatmap with red-blue diverging colormap
+        im = ax.imshow(
+            h_combined.T,
+            origin='lower',
+            extent=[-2.5, 2.5, -0.5, 4.5],
+            aspect='auto',
+            cmap='RdBu_r',  # Red for stolen (positive), Blue for lost (negative)
+            alpha=0.7,
+            interpolation='bilinear',
+            vmin=-np.max(np.abs(h_combined)) if np.max(np.abs(h_combined)) > 0 else -1,
+            vmax=np.max(np.abs(h_combined)) if np.max(np.abs(h_combined)) > 0 else 1
+        )
+        
+        # Add colorbar with custom styling
+        cbar = plt.colorbar(im, ax=ax, shrink=0.8, aspect=20)
+        cbar.ax.tick_params(colors='white', labelsize=12)
+        cbar.set_label('Strike Advantage (Red = Stolen, Blue = Lost)', color='white', fontsize=14, fontweight='bold')
+        cbar.ax.yaxis.set_label_position('left')
+    
+    # Add pitch type points if enabled
+    if show_dots:
+        # Plot stolen strikes with circle markers
+        if not stolen_pts.empty:
+            for ptype in stolen_pts[pitch_type_col].dropna().unique():
+                subset = stolen_pts[stolen_pts[pitch_type_col] == ptype].dropna(subset=["PlateLocSide", "PlateLocHeight"])
                 if not subset.empty:
                     color = pitch_colors.get(ptype, "#795548")
-                    scatter = ax.scatter(
+                    ax.scatter(
                         subset["PlateLocSide"], subset["PlateLocHeight"],
-                        c=color, s=200, alpha=0.9,  # MUCH LARGER SIZE
-                        edgecolors="white", linewidth=2.5,  # THICKER BORDERS
-                        label=f"{ptype} ({len(subset)})",
+                        c=color, s=200, alpha=0.9, marker='o',
+                        edgecolors="white", linewidth=2.5,
+                        label=f"Stolen - {ptype} ({len(subset)})",
                         zorder=10
                     )
-                    pitch_counts[ptype] = len(subset)
+        
+        # Plot lost strikes with square markers
+        if not lost_pts.empty:
+            for ptype in lost_pts[pitch_type_col].dropna().unique():
+                subset = lost_pts[lost_pts[pitch_type_col] == ptype].dropna(subset=["PlateLocSide", "PlateLocHeight"])
+                if not subset.empty:
+                    color = pitch_colors.get(ptype, "#795548")
+                    ax.scatter(
+                        subset["PlateLocSide"], subset["PlateLocHeight"],
+                        c=color, s=200, alpha=0.9, marker='s',
+                        edgecolors="black", linewidth=2.5,
+                        label=f"Lost - {ptype} ({len(subset)})",
+                        zorder=10
+                    )
 
     # Enhanced styling
     ax.set_xlim(-2.5, 2.5)
@@ -382,9 +404,12 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
     ax.set_aspect("equal")
     
     # Enhanced title with subtitle
-    count = len(pts) if not pts.empty else 0
-    subtitle = f"Total Pitches: {count}"
-    ax.set_title(f"{title}\n{subtitle}", fontsize=20, fontweight="bold", 
+    stolen_count = len(stolen_pts) if not stolen_pts.empty else 0
+    lost_count = len(lost_pts) if not lost_pts.empty else 0
+    net_advantage = stolen_count - lost_count
+    
+    subtitle = f"Stolen: {stolen_count} | Lost: {lost_count} | Net: {net_advantage:+d}"
+    ax.set_title(f"Combined Strike Zone Analysis\n{subtitle}", fontsize=24, fontweight="bold", 
                 color='white', pad=25)
     
     # Remove ticks and add grid
@@ -392,11 +417,30 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
     ax.set_yticks([])
     ax.grid(True, alpha=0.2, color='white')
     
-    # Enhanced legend with LARGER text
-    if not pts.empty and show_dots:
-        legend = ax.legend(bbox_to_anchor=(1.15, 1), loc="upper left", 
-                          fontsize=14, frameon=True, fancybox=True,  # LARGER FONT
-                          shadow=True, framealpha=0.9, markerscale=1.5)  # LARGER MARKERS
+    # Enhanced legend with explanation
+    if show_dots and (not stolen_pts.empty or not lost_pts.empty):
+        # Add legend explanation
+        legend_elements = []
+        if not stolen_pts.empty or not lost_pts.empty:
+            # Add custom legend entries for symbols
+            legend_elements.extend([
+                Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
+                       markersize=12, label='● = Stolen Strikes', markeredgecolor='white', markeredgewidth=2),
+                Line2D([0], [0], marker='s', color='w', markerfacecolor='gray', 
+                       markersize=12, label='■ = Lost Strikes', markeredgecolor='black', markeredgewidth=2),
+                Line2D([0], [0], color='none', label='')  # Spacer
+            ])
+        
+        # Get existing handles and labels
+        handles, labels = ax.get_legend_handles_labels()
+        
+        # Combine custom elements with existing ones
+        all_handles = legend_elements + handles
+        all_labels = [elem.get_label() for elem in legend_elements] + labels
+        
+        legend = ax.legend(all_handles, all_labels, bbox_to_anchor=(1.15, 1), loc="upper left", 
+                          fontsize=12, frameon=True, fancybox=True,
+                          shadow=True, framealpha=0.9, markerscale=1.2)
         legend.get_frame().set_facecolor('#3d3d3d')
         for text in legend.get_texts():
             text.set_color('white')
