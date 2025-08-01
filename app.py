@@ -362,11 +362,7 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
             vmax=np.max(np.abs(h_combined)) if np.max(np.abs(h_combined)) > 0 else 1
         )
         
-        # Add colorbar with custom styling
-        cbar = plt.colorbar(im, ax=ax, shrink=0.8, aspect=20)
-        cbar.ax.tick_params(colors='white', labelsize=12)
-        cbar.set_label('Strike Advantage (Red = Stolen, Blue = Lost)', color='white', fontsize=14, fontweight='bold')
-        cbar.ax.yaxis.set_label_position('left')
+        # Colorbar removed - no longer displayed
     
     # Add pitch type points if enabled
     if show_dots:
@@ -439,14 +435,14 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
         all_labels = [elem.get_label() for elem in legend_elements] + labels
         
         legend = ax.legend(all_handles, all_labels, bbox_to_anchor=(1.15, 1), loc="upper left", 
-                          fontsize=12, frameon=True, fancybox=True,
+                          fontsize=11, frameon=True, fancybox=True,  # REDUCED FONT SIZE
                           shadow=True, framealpha=0.9, markerscale=1.2)
         legend.get_frame().set_facecolor('#3d3d3d')
         for text in legend.get_texts():
             text.set_color('white')
     
-    # Adjust layout
-    fig.subplots_adjust(left=0.1, right=0.85, top=0.9, bottom=0.1)
+    # Adjust layout - more space since no colorbar
+    fig.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.1)
     
     return fig
 
