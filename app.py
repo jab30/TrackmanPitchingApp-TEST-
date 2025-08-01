@@ -265,8 +265,8 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, show_heatmap: bool = True, show_dots: bool = True):
     """Create an enhanced strike zone visualization with better aesthetics."""
-    # Create figure with dark background
-    fig = plt.figure(figsize=(14, 12), facecolor='#1e1e1e')
+    # Create figure with dark background - LARGER SIZE
+    fig = plt.figure(figsize=(18, 16), facecolor='#1e1e1e')
     ax = fig.add_subplot(111, facecolor='#2d2d2d')
     
     # Enhanced strike zone with gradient effect
@@ -336,11 +336,11 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
             x = pts["PlateLocSide"]
             y = pts["PlateLocHeight"]
             
-            # Create high-resolution histogram
-            h, xedges, yedges = np.histogram2d(x, y, bins=120, range=[[-2.5, 2.5], [-0.5, 4.5]])
+            # Create high-resolution histogram - MUCH HIGHER RESOLUTION
+            h, xedges, yedges = np.histogram2d(x, y, bins=200, range=[[-2.5, 2.5], [-0.5, 4.5]])
             
             # Apply stronger smoothing
-            h = gaussian_filter(h, sigma=3.0)
+            h = gaussian_filter(h, sigma=4.0)
             
             # Create the heatmap with enhanced styling
             im = ax.imshow(
@@ -368,8 +368,8 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
                     color = pitch_colors.get(ptype, "#795548")
                     scatter = ax.scatter(
                         subset["PlateLocSide"], subset["PlateLocHeight"],
-                        c=color, s=100, alpha=0.9, 
-                        edgecolors="white", linewidth=1.5, 
+                        c=color, s=200, alpha=0.9,  # MUCH LARGER SIZE
+                        edgecolors="white", linewidth=2.5,  # THICKER BORDERS
                         label=f"{ptype} ({len(subset)})",
                         zorder=10
                     )
@@ -391,11 +391,11 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
     ax.set_yticks([])
     ax.grid(True, alpha=0.2, color='white')
     
-    # Enhanced legend
+    # Enhanced legend with LARGER text
     if not pts.empty and show_dots:
         legend = ax.legend(bbox_to_anchor=(1.15, 1), loc="upper left", 
-                          fontsize=11, frameon=True, fancybox=True, 
-                          shadow=True, framealpha=0.9)
+                          fontsize=14, frameon=True, fancybox=True,  # LARGER FONT
+                          shadow=True, framealpha=0.9, markerscale=1.5)  # LARGER MARKERS
         legend.get_frame().set_facecolor('#3d3d3d')
         for text in legend.get_texts():
             text.set_color('white')
@@ -498,26 +498,39 @@ app_ui = ui.page_fluid(
                 ui.h2("⚾ KSU Baseball Analytics Dashboard", 
                      style="color: #343a40; text-align: center; margin-bottom: 30px;"),
                 ui.div(
-                    ui.h4("📈 Game Summary"),
+                    ui.h3("📈 Game Performance Summary", style="color: #2c3e50; margin-bottom: 25px; text-align: center; font-weight: 700;"),
                     ui.div(
-                        ui.output_text("ksu_summary_text"),
-                        style="font-size: 20px; font-weight: bold; margin: 15px 0; "
-                              "padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); "
-                              "color: white; border-radius: 8px; text-align: center;"
-                    ),
-                    ui.div(
-                        ui.input_action_button("print_button", "🖨️ Generate Report", 
-                                             class_="btn-primary btn-lg",
-                                             style="margin: 10px 0;"),
-                        style="text-align: center;"
-                    ),
-                    ui.div(
-                        ui.output_table("ksu_summary_table"),
-                        class_="table-responsive",
-                        style="margin: 20px 0;"
+                        ui.div(
+                            ui.output_text("ksu_summary_text"),
+                            style="font-size: 28px; font-weight: 800; margin: 20px 0; "
+                                  "padding: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); "
+                                  "color: white; border-radius: 12px; text-align: center; "
+                                  "box-shadow: 0 8px 25px rgba(0,0,0,0.15); "
+                                  "border: 2px solid rgba(255,255,255,0.1);"
+                        ),
+                        ui.div(
+                            ui.input_action_button("print_button", "🖨️ Generate Detailed Report", 
+                                                 class_="btn-primary btn-lg",
+                                                 style="margin: 15px 0; padding: 12px 30px; font-size: 16px; font-weight: 600; "
+                                                       "background: linear-gradient(45deg, #007bff, #0056b3); "
+                                                       "border: none; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,123,255,0.3);"),
+                            style="text-align: center;"
+                        ),
+                        ui.div(
+                            ui.div(
+                                ui.h5("📊 Detailed Statistics", style="color: #495057; margin-bottom: 15px; font-weight: 600;"),
+                                ui.output_table("ksu_summary_table"),
+                                style="background: #f8f9fa; padding: 20px; border-radius: 8px; "
+                                      "border: 1px solid #dee2e6; box-shadow: 0 2px 8px rgba(0,0,0,0.08);"
+                            ),
+                            class_="table-responsive",
+                            style="margin: 20px 0;"
+                        )
                     ),
                     class_="card",
-                    style="padding: 20px; margin-bottom: 30px; background-color: white;"
+                    style="padding: 30px; margin-bottom: 40px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); "
+                          "border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); "
+                          "border: 1px solid rgba(255,255,255,0.2);"
                 ),
                 ui.h3("📊 Analysis Visualizations", style="color: #343a40; margin-bottom: 20px;"),
                 ui.navset_tab(
@@ -526,14 +539,16 @@ app_ui = ui.page_fluid(
                         ui.div(
                             ui.layout_columns(
                                 ui.div(
-                                    ui.output_plot("stolen_strikes_plot"),
+                                    ui.output_plot("stolen_strikes_plot", height="800px"),  # MUCH LARGER
                                     class_="card",
-                                    style="padding: 15px; margin: 10px; background-color: white;"
+                                    style="padding: 20px; margin: 15px; background-color: white; "
+                                          "border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.1);"
                                 ),
                                 ui.div(
-                                    ui.output_plot("lost_strikes_plot"),
+                                    ui.output_plot("lost_strikes_plot", height="800px"),  # MUCH LARGER
                                     class_="card",
-                                    style="padding: 15px; margin: 10px; background-color: white;"
+                                    style="padding: 20px; margin: 15px; background-color: white; "
+                                          "border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.1);"
                                 ),
                                 fill=False
                             ),
@@ -678,11 +693,20 @@ def server(input, output, session):
     def ksu_summary_text():
         df = ksu_summary_df()
         if df.empty:
-            return "Stolen: 0   |   Lost: 0   |   Net: 0"
+            return "Strikes Stolen: 0  •  Strikes Lost: 0  •  Net Advantage: 0"
         stolen = int(df["KSU Strikes Stolen"].iloc[0])
         lost = int(df["KSU Strikes Lost"].iloc[0])
         net = int(df["KSU Game +/-"].iloc[0])
-        return f"Stolen: {stolen}   |   Lost: {lost}   |   Net: {net}"
+        
+        # Add performance indicator
+        if net > 0:
+            indicator = "✅ POSITIVE"
+        elif net < 0:
+            indicator = "⚠️ NEGATIVE"
+        else:
+            indicator = "➖ NEUTRAL"
+            
+        return f"Strikes Stolen: {stolen}  •  Strikes Lost: {lost}  •  Net Advantage: {net} ({indicator})"
 
     @output
     @render.table
