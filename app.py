@@ -435,8 +435,8 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
         all_labels = [elem.get_label() for elem in legend_elements] + labels
         
         legend = ax.legend(all_handles, all_labels, bbox_to_anchor=(1.15, 1), loc="upper left", 
-                          fontsize=11, frameon=True, fancybox=True,  # REDUCED FONT SIZE
-                          shadow=True, framealpha=0.9, markerscale=1.2)
+                          fontsize=9, frameon=True, fancybox=True,  # SMALLER FONT SIZE
+                          shadow=True, framealpha=0.9, markerscale=1.0)  # SMALLER MARKERS
         legend.get_frame().set_facecolor('#3d3d3d')
         for text in legend.get_texts():
             text.set_color('white')
