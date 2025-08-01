@@ -349,7 +349,7 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
         # Combine heatmaps: positive values for stolen strikes, negative for lost strikes
         h_combined = h_stolen - h_lost
         
-        # Create the combined heatmap with red-blue diverging colormap
+        # Create the combined heatmap with red-blue diverging colormap (no colorbar)
         im = ax.imshow(
             h_combined.T,
             origin='lower',
@@ -361,8 +361,6 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
             vmin=-np.max(np.abs(h_combined)) if np.max(np.abs(h_combined)) > 0 else -1,
             vmax=np.max(np.abs(h_combined)) if np.max(np.abs(h_combined)) > 0 else 1
         )
-        
-        # Colorbar removed - no longer displayed
     
     # Add pitch type points if enabled
     if show_dots:
