@@ -292,19 +292,6 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
     ax.plot(plate_x, plate_y, color='white', linewidth=3, alpha=0.9)
     ax.fill(plate_x, plate_y, color='#f0f0f0', alpha=0.3)
 
-    # Add batter's boxes for context
-    # Left batter's box
-    left_box = Rectangle((-1.2, -0.1), 0.4, 1.2, 
-                        linewidth=2, edgecolor='#888888', 
-                        facecolor='none', alpha=0.5)
-    ax.add_patch(left_box)
-    
-    # Right batter's box
-    right_box = Rectangle((0.8, -0.1), 0.4, 1.2, 
-                         linewidth=2, edgecolor='#888888', 
-                         facecolor='none', alpha=0.5)
-    ax.add_patch(right_box)
-
     # Determine which column holds the pitch type
     pitch_type_col = next(
         (c for c in df.columns if "PitchType" in c or "TaggedPitchType" in c),
@@ -432,7 +419,7 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
         all_handles = legend_elements + handles
         all_labels = [elem.get_label() for elem in legend_elements] + labels
         
-        legend = ax.legend(all_handles, all_labels, bbox_to_anchor=(1.15, 1), loc="upper left", 
+        legend = ax.legend(all_handles, all_labels, bbox_to_anchor=(1.05, 1), loc="upper left",  # MOVED LEFT
                           fontsize=9, frameon=True, fancybox=True,  # SMALLER FONT SIZE
                           shadow=True, framealpha=0.9, markerscale=1.0)  # SMALLER MARKERS
         legend.get_frame().set_facecolor('#3d3d3d')
