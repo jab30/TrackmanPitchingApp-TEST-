@@ -9,6 +9,7 @@ import glob
 from scipy.ndimage import gaussian_filter
 from matplotlib.patches import Rectangle
 import matplotlib.patches as patches
+from matplotlib.lines import Line2D
 
 # Set matplotlib style for better aesthetics
 plt.style.use('seaborn-v0_8-darkgrid')
