@@ -3,23 +3,30 @@ from shiny import App, ui, render, reactive, session
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 import os
 import glob
 from scipy.ndimage import gaussian_filter
+from matplotlib.patches import Rectangle
+import matplotlib.patches as patches
 
-# Define pitch color mapping (unchanged)
+# Set matplotlib style for better aesthetics
+plt.style.use('seaborn-v0_8-darkgrid')
+sns.set_palette("husl")
+
+# Define pitch color mapping with more vibrant colors
 pitch_colors = {
-    "Fastball": '#ff007d',
-    "Four-Seam": '#ff007d',
-    "Sinker": "#98165D",
-    "Slider": "#67E18D",
-    "Sweeper": "#1BB999",
-    "Curveball": '#3025CE',
-    "ChangeUp": '#F79E70',
-    "Splitter": '#90EE32',
-    "Cutter": "#BE5FA0",
-    "Undefined": '#9C8975',
-    "PitchOut": '#472C30'
+    "Fastball": '#FF1744',
+    "Four-Seam": '#FF1744',
+    "Sinker": "#AD1457",
+    "Slider": '#00E676',
+    "Sweeper": "#00BCD4",
+    "Curveball": '#3F51B5',
+    "ChangeUp": '#FF9800',
+    "Splitter": '#8BC34A',
+    "Cutter": "#E91E63",
+    "Undefined": '#795548',
+    "PitchOut": '#424242'
 }
 
 # Load all CSV files from the TrackmanCSV's folder
@@ -257,25 +264,45 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, show_heatmap: bool = True, show_dots: bool = True):
-    """Create a larger, square plot for strike zone visualization with KDE heatmap."""
-    # Create figure with consistent size regardless of content
-    fig = plt.figure(figsize=(12, 12))
-    ax = fig.add_subplot(111)
+    """Create an enhanced strike zone visualization with better aesthetics."""
+    # Create figure with dark background
+    fig = plt.figure(figsize=(14, 12), facecolor='#1e1e1e')
+    ax = fig.add_subplot(111, facecolor='#2d2d2d')
     
-    # Set the figure size explicitly
-    fig.set_size_inches(12, 12)
-
-    # Draw strike zone rectangle
-    strike_zone = plt.Rectangle(
+    # Enhanced strike zone with gradient effect
+    strike_zone = Rectangle(
         (-0.83, 1.5), 1.66, 1.87,
-        linewidth=2, edgecolor='red', facecolor='none'
+        linewidth=3, edgecolor='#FF6B6B', facecolor='none',
+        linestyle='--', alpha=0.8
     )
     ax.add_patch(strike_zone)
+    
+    # Add strike zone shadow for depth
+    shadow_zone = Rectangle(
+        (-0.825, 1.495), 1.65, 1.86,
+        linewidth=1, edgecolor='#333333', facecolor='none',
+        alpha=0.3
+    )
+    ax.add_patch(shadow_zone)
 
-    # Draw home plate outline
+    # Enhanced home plate with better styling
     plate_x = [-0.708, 0.708, 0.708, 0, -0.708, -0.708]
     plate_y = [0.15, 0.15, 0.3, 0.5, 0.3, 0.15]
-    ax.plot(plate_x, plate_y, 'k-', linewidth=2)
+    ax.plot(plate_x, plate_y, color='white', linewidth=3, alpha=0.9)
+    ax.fill(plate_x, plate_y, color='#f0f0f0', alpha=0.3)
+
+    # Add batter's boxes for context
+    # Left batter's box
+    left_box = Rectangle((-1.2, -0.1), 0.4, 1.2, 
+                        linewidth=2, edgecolor='#888888', 
+                        facecolor='none', alpha=0.5)
+    ax.add_patch(left_box)
+    
+    # Right batter's box
+    right_box = Rectangle((0.8, -0.1), 0.4, 1.2, 
+                         linewidth=2, edgecolor='#888888', 
+                         facecolor='none', alpha=0.5)
+    ax.add_patch(right_box)
 
     # Determine which column holds the pitch type
     pitch_type_col = next(
@@ -285,131 +312,261 @@ def create_strike_zone_plot(df: pd.DataFrame, title: str, stolen: bool = True, s
 
     if pitch_type_col is None or "PlateLocSide" not in df.columns or "PlateLocHeight" not in df.columns:
         ax.text(
-            0.5, 0.5, f"Missing data for {title}",
-            ha='center', va='center', transform=ax.transAxes, fontsize=12
+            0.5, 0.5, f"No data available for {title}",
+            ha='center', va='center', transform=ax.transAxes, 
+            fontsize=16, color='white', fontweight='bold'
         )
-        ax.set_xlim(-2, 2)
-        ax.set_ylim(0, 4)
-        ax.set_title(title, fontsize=16, fontweight='bold')
-        ax.set_xticks([])
-        ax.set_yticks([])
+        ax.set_xlim(-2.5, 2.5)
+        ax.set_ylim(-0.5, 4.5)
+        ax.set_title(title, fontsize=20, fontweight='bold', color='white', pad=20)
+        ax.set_facecolor('#2d2d2d')
         return fig
 
     # Filter the appropriate points
     if stolen:
-        pts = df[df["StolenStrike"] == 1]
+        pts = df[df["StolenStrike"] == 1] if "StolenStrike" in df.columns else pd.DataFrame()
+        heatmap_color = 'Reds'
     else:
-        pts = df[df["StrikeLost"] == 1]
+        pts = df[df["StrikeLost"] == 1] if "StrikeLost" in df.columns else pd.DataFrame()
+        heatmap_color = 'Blues'
 
     if not pts.empty:
-        # Create heatmap if enabled
+        # Create enhanced heatmap
         if show_heatmap:
-            # Create a 2D histogram
             x = pts["PlateLocSide"]
             y = pts["PlateLocHeight"]
             
-            # Create a 2D histogram with more bins for better resolution
-            h, xedges, yedges = np.histogram2d(x, y, bins=100, range=[[-2, 2], [0, 4]])
+            # Create high-resolution histogram
+            h, xedges, yedges = np.histogram2d(x, y, bins=120, range=[[-2.5, 2.5], [-0.5, 4.5]])
             
-            # Smooth the histogram using Gaussian filter with increased sigma
-            h = gaussian_filter(h, sigma=2.0)
+            # Apply stronger smoothing
+            h = gaussian_filter(h, sigma=3.0)
             
-            # Create the heatmap with red-blue colormap
+            # Create the heatmap with enhanced styling
             im = ax.imshow(
                 h.T,
                 origin='lower',
-                extent=[-2, 2, 0, 4],
+                extent=[-2.5, 2.5, -0.5, 4.5],
                 aspect='auto',
-                cmap='RdBu_r',  # Red-Blue colormap (reversed so red is hot)
-                alpha=0.7
+                cmap=heatmap_color,
+                alpha=0.7,
+                interpolation='bilinear'
             )
+            
+            # Add colorbar with custom styling
+            cbar = plt.colorbar(im, ax=ax, shrink=0.8, aspect=20)
+            cbar.ax.tick_params(colors='white', labelsize=10)
+            cbar.set_label('Pitch Density', color='white', fontsize=12, fontweight='bold')
+            cbar.ax.yaxis.set_label_position('left')
         
-        # Add pitch type points if enabled
+        # Add enhanced pitch type points
         if show_dots:
+            pitch_counts = {}
             for ptype in pts[pitch_type_col].dropna().unique():
                 subset = pts[pts[pitch_type_col] == ptype].dropna(subset=["PlateLocSide", "PlateLocHeight"])
                 if not subset.empty:
-                    color = pitch_colors.get(ptype, "#9C8975")
-                    ax.scatter(
+                    color = pitch_colors.get(ptype, "#795548")
+                    scatter = ax.scatter(
                         subset["PlateLocSide"], subset["PlateLocHeight"],
-                        c=color, s=60, alpha=0.8, edgecolors="black", linewidth=0.5, label=ptype
+                        c=color, s=100, alpha=0.9, 
+                        edgecolors="white", linewidth=1.5, 
+                        label=f"{ptype} ({len(subset)})",
+                        zorder=10
                     )
+                    pitch_counts[ptype] = len(subset)
 
-    ax.set_xlim(-2, 2)
-    ax.set_ylim(0, 4)
+    # Enhanced styling
+    ax.set_xlim(-2.5, 2.5)
+    ax.set_ylim(-0.5, 4.5)
     ax.set_aspect("equal")
-    ax.set_title(title, fontsize=16, fontweight="bold")
+    
+    # Enhanced title with subtitle
+    count = len(pts) if not pts.empty else 0
+    subtitle = f"Total Pitches: {count}"
+    ax.set_title(f"{title}\n{subtitle}", fontsize=20, fontweight="bold", 
+                color='white', pad=25)
+    
+    # Remove ticks and add grid
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.axis('off')  # Remove all axes
-
+    ax.grid(True, alpha=0.2, color='white')
+    
+    # Enhanced legend
     if not pts.empty and show_dots:
-        # Adjust layout to maintain consistent size
-        fig.subplots_adjust(right=0.85, left=0.15, top=0.9, bottom=0.1)
-        ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=10)
-    else:
-        # Adjust layout when no legend is needed
-        fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
-
+        legend = ax.legend(bbox_to_anchor=(1.15, 1), loc="upper left", 
+                          fontsize=11, frameon=True, fancybox=True, 
+                          shadow=True, framealpha=0.9)
+        legend.get_frame().set_facecolor('#3d3d3d')
+        for text in legend.get_texts():
+            text.set_color('white')
+    
+    # Adjust layout
+    fig.subplots_adjust(left=0.1, right=0.85, top=0.9, bottom=0.1)
+    
     return fig
 
 
-# UI definition with KSU summary and two tabs:
-#  - "Strike Zone Analysis": stolen & lost side-by-side
-#  - "Throw Analysis": pop time chart, throw speed chart, pop time details table
+def create_distribution_plot(data, title, xlabel, color, bins=15):
+    """Create enhanced distribution plots for throw analysis."""
+    fig, ax = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
+    ax.set_facecolor('#2d2d2d')
+    
+    if data.empty:
+        ax.text(0.5, 0.5, f"No {xlabel.lower()} data available",
+                ha="center", va="center", transform=ax.transAxes, 
+                fontsize=16, color='white', fontweight='bold')
+        ax.set_title(title, fontsize=18, fontweight="bold", color='white', pad=20)
+        return fig
+
+    # Create histogram with enhanced styling
+    n, bins_edges, patches = ax.hist(data.dropna(), bins=bins, color=color, 
+                                   alpha=0.8, edgecolor='white', linewidth=1.5)
+    
+    # Color gradient for bars
+    for i, patch in enumerate(patches):
+        patch.set_facecolor(plt.cm.viridis(i / len(patches)))
+    
+    # Add statistics text
+    mean_val = data.mean()
+    median_val = data.median()
+    std_val = data.std()
+    
+    stats_text = f"Mean: {mean_val:.2f}\nMedian: {median_val:.2f}\nStd: {std_val:.2f}"
+    ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
+            verticalalignment='top', fontsize=12, color='white',
+            bbox=dict(boxstyle="round,pad=0.3", facecolor='#3d3d3d', alpha=0.8))
+    
+    # Enhanced styling
+    ax.set_title(title, fontsize=18, fontweight="bold", color='white', pad=20)
+    ax.set_xlabel(xlabel, fontsize=14, color='white', fontweight='bold')
+    ax.set_ylabel("Frequency", fontsize=14, color='white', fontweight='bold')
+    
+    # Style the axes
+    ax.tick_params(colors='white', labelsize=12)
+    ax.spines['bottom'].set_color('white')
+    ax.spines['top'].set_color('white')
+    ax.spines['right'].set_color('white')
+    ax.spines['left'].set_color('white')
+    
+    # Add grid
+    ax.grid(True, alpha=0.3, color='white')
+    
+    plt.tight_layout()
+    return fig
+
+
+# Enhanced UI with better styling
 app_ui = ui.page_fluid(
+    # Add custom CSS for better styling
+    ui.tags.head(
+        ui.tags.style("""
+            body { background-color: #f8f9fa; }
+            .sidebar { background-color: #343a40 !important; color: white; }
+            .sidebar h4 { color: #17a2b8; }
+            .card { box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); border-radius: 8px; }
+            .nav-tabs .nav-link.active { background-color: #007bff; color: white; }
+            .btn-primary { background-color: #007bff; border-color: #007bff; }
+            .table-responsive { border-radius: 8px; overflow: hidden; }
+        """)
+    ),
     ui.layout_sidebar(
         ui.sidebar(
-            ui.h4("🔍 Filter Options"),
-            ui.input_date_range(
-                "date_range",
-                "Select Date Range",
-                start=None,
-                end=None
+            ui.div(
+                ui.h4("🔍 Filter Options", style="color: #17a2b8; margin-bottom: 20px;"),
+                ui.input_date_range(
+                    "date_range",
+                    "Select Date Range",
+                    start=None,
+                    end=None
+                ),
+                ui.input_select(
+                    "catcher",
+                    "Catcher",
+                    choices=[],
+                    multiple=False,
+                ),
+                ui.hr(style="border-color: #6c757d;"),
+                ui.h4("📊 Plot Options", style="color: #17a2b8; margin-bottom: 20px;"),
+                ui.input_switch("show_heatmap", "Show Heatmap", value=True),
+                ui.input_switch("show_dots", "Show Individual Pitches", value=True),
+                style="padding: 20px;"
             ),
-            ui.input_select(
-                "catcher",
-                "Catcher",
-                choices=[],
-                multiple=False,
-            ),
-            ui.hr(),
-            ui.h4("📊 Plot Options"),
-            ui.input_switch("show_heatmap", "Show Heatmap", value=True),
-            ui.input_switch("show_dots", "Show Individual Pitches", value=True),
             width=300,
         ),
         ui.div(
-            ui.h3("⚾ Game Summary (KSU)"),
             ui.div(
-                ui.output_text("ksu_summary_text"),
-                style="font-size: 18px; font-weight: bold; margin: 10px 0;"
-            ),
-            ui.input_action_button("print_button", "🖨️ Print Report", class_="btn-primary"),
-            ui.output_table("ksu_summary_table"),
-            ui.br(),
-            ui.h3("📈 Analysis Plots"),
-            ui.navset_tab(
-                ui.nav_panel(
-                    "Strike Zone Analysis",
-                    ui.layout_columns(
-                        ui.column(6, ui.output_plot("stolen_strikes_plot")),
-                        ui.column(6, ui.output_plot("lost_strikes_plot")),
-                        fill=False
+                ui.h2("⚾ KSU Baseball Analytics Dashboard", 
+                     style="color: #343a40; text-align: center; margin-bottom: 30px;"),
+                ui.div(
+                    ui.h4("📈 Game Summary"),
+                    ui.div(
+                        ui.output_text("ksu_summary_text"),
+                        style="font-size: 20px; font-weight: bold; margin: 15px 0; "
+                              "padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); "
+                              "color: white; border-radius: 8px; text-align: center;"
+                    ),
+                    ui.div(
+                        ui.input_action_button("print_button", "🖨️ Generate Report", 
+                                             class_="btn-primary btn-lg",
+                                             style="margin: 10px 0;"),
+                        style="text-align: center;"
+                    ),
+                    ui.div(
+                        ui.output_table("ksu_summary_table"),
+                        class_="table-responsive",
+                        style="margin: 20px 0;"
+                    ),
+                    class_="card",
+                    style="padding: 20px; margin-bottom: 30px; background-color: white;"
+                ),
+                ui.h3("📊 Analysis Visualizations", style="color: #343a40; margin-bottom: 20px;"),
+                ui.navset_tab(
+                    ui.nav_panel(
+                        "🎯 Strike Zone Analysis",
+                        ui.div(
+                            ui.layout_columns(
+                                ui.div(
+                                    ui.output_plot("stolen_strikes_plot"),
+                                    class_="card",
+                                    style="padding: 15px; margin: 10px; background-color: white;"
+                                ),
+                                ui.div(
+                                    ui.output_plot("lost_strikes_plot"),
+                                    class_="card",
+                                    style="padding: 15px; margin: 10px; background-color: white;"
+                                ),
+                                fill=False
+                            ),
+                            style="margin-top: 20px;"
+                        )
+                    ),
+                    ui.nav_panel(
+                        "🚀 Throw Analysis",
+                        ui.div(
+                            ui.div(
+                                ui.h4("📊 Pop Time Distribution", style="color: #343a40;"),
+                                ui.output_plot("pop_time_plot"),
+                                class_="card",
+                                style="padding: 20px; margin: 15px 0; background-color: white;"
+                            ),
+                            ui.div(
+                                ui.h4("🎯 Throw Speed Distribution", style="color: #343a40;"),
+                                ui.output_plot("throw_speed_plot"),
+                                class_="card",
+                                style="padding: 20px; margin: 15px 0; background-color: white;"
+                            ),
+                            ui.div(
+                                ui.h4("⏱️ Detailed Pop Time Data", style="color: #343a40;"),
+                                ui.output_table("pop_time_table"),
+                                class_="card table-responsive",
+                                style="padding: 20px; margin: 15px 0; background-color: white;"
+                            ),
+                            style="margin-top: 20px;"
+                        )
                     ),
                 ),
-                ui.nav_panel(
-                    "Throw Analysis",
-                    ui.h4("📊 Pop Time Distribution"),
-                    ui.output_plot("pop_time_plot"),
-                    ui.br(),
-                    ui.h4("🚀 Throw Speed Distribution"),
-                    ui.output_plot("throw_speed_plot"),
-                    ui.br(),
-                    ui.h4("⏱️ Pop Time Details"),
-                    ui.output_table("pop_time_table"),
-                ),
-            ),
+                style="max-width: 1400px; margin: 0 auto;"
+            )
         )
     )
 )
@@ -586,68 +743,52 @@ def server(input, output, session):
     @render.plot
     def pop_time_plot():
         df = throwlog_df()
-        fig, ax = plt.subplots(figsize=(6, 4))
         if df.empty or "PopTime" not in df.columns:
-            ax.text(
-                0.5, 0.5, "No PopTime data",
-                ha="center", va="center", transform=ax.transAxes, fontsize=12
-            )
-            ax.set_title("Pop Time Distribution", fontsize=14, fontweight="bold")
-            ax.set_xticks([])
-            ax.set_yticks([])
-            return fig
-
-        # Histogram of PopTime
-        ax.hist(df["PopTime"].dropna(), bins=10, color="#3025CE", alpha=0.7, edgecolor="black")
-        ax.set_title("Pop Time Distribution", fontsize=14, fontweight="bold")
-        ax.set_xlabel("Pop Time (sec)")
-        ax.set_ylabel("Count")
-        plt.tight_layout()
-        return fig
+            return create_distribution_plot(pd.Series(), "Pop Time Distribution", 
+                                          "Pop Time (seconds)", "#3F51B5")
+        
+        return create_distribution_plot(df["PopTime"], "Pop Time Distribution", 
+                                      "Pop Time (seconds)", "#3F51B5")
 
     @output
     @render.plot
     def throw_speed_plot():
         df = throwlog_df()
-        fig, ax = plt.subplots(figsize=(6, 4))
         if df.empty or "ThrowSpeed" not in df.columns:
-            ax.text(
-                0.5, 0.5, "No ThrowSpeed data",
-                ha="center", va="center", transform=ax.transAxes, fontsize=12
-            )
-            ax.set_title("Throw Speed Distribution", fontsize=14, fontweight="bold")
-            ax.set_xticks([])
-            ax.set_yticks([])
-            return fig
-
-        # Histogram of ThrowSpeed
-        ax.hist(df["ThrowSpeed"].dropna(), bins=10, color="#F79E70", alpha=0.7, edgecolor="black")
-        ax.set_title("Throw Speed Distribution", fontsize=14, fontweight="bold")
-        ax.set_xlabel("Throw Speed (mph)")
-        ax.set_ylabel("Count")
-        plt.tight_layout()
-        return fig
+            return create_distribution_plot(pd.Series(), "Throw Speed Distribution", 
+                                          "Throw Speed (mph)", "#FF9800")
+        
+        return create_distribution_plot(df["ThrowSpeed"], "Throw Speed Distribution", 
+                                      "Throw Speed (mph)", "#FF9800")
 
     @output
     @render.table
     def pop_time_table():
-        """
-        Instead of ExchangeTime, show a small table of PopTime values
-        for every pitch (filtered by selected catcher).
-        """
+        """Show a table of PopTime values for every pitch (filtered by selected catcher)."""
         df = throwlog_df()
         if df.empty or "PopTime" not in df.columns:
-            return pd.DataFrame({"Message": ["No PopTime data"]})
-        cols = [c for c in ["PitchNo", "Catcher", "PopTime"] if c in df.columns]
-        return df[cols].rename(columns={"PopTime": "Pop Time (sec)"})
+            return pd.DataFrame({"Message": ["No PopTime data available"]})
+        
+        # Enhanced table with better formatting
+        cols = [c for c in ["PitchNo", "Catcher", "PopTime", "ThrowSpeed"] if c in df.columns]
+        result_df = df[cols].copy()
+        
+        # Format the columns for better display
+        if "PopTime" in result_df.columns:
+            result_df["Pop Time (sec)"] = result_df["PopTime"].round(3)
+            result_df = result_df.drop("PopTime", axis=1)
+        
+        if "ThrowSpeed" in result_df.columns:
+            result_df["Throw Speed (mph)"] = result_df["ThrowSpeed"].round(1)
+            result_df = result_df.drop("ThrowSpeed", axis=1)
+            
+        return result_df.head(20)  # Limit to first 20 rows for better display
 
     @reactive.Effect
     @reactive.event(input.print_button)
     def _():
         session.send_custom_message("print", {})
         print("Print button clicked")  # Debug print
-
-    # End of server()
 
 
 app = App(app_ui, server)
