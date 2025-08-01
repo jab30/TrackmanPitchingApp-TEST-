@@ -537,22 +537,14 @@ app_ui = ui.page_fluid(
                     ui.nav_panel(
                         "🎯 Strike Zone Analysis",
                         ui.div(
-                            ui.layout_columns(
-                                ui.div(
-                                    ui.output_plot("stolen_strikes_plot", height="800px"),  # MUCH LARGER
-                                    class_="card",
-                                    style="padding: 20px; margin: 15px; background-color: white; "
-                                          "border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.1);"
-                                ),
-                                ui.div(
-                                    ui.output_plot("lost_strikes_plot", height="800px"),  # MUCH LARGER
-                                    class_="card",
-                                    style="padding: 20px; margin: 15px; background-color: white; "
-                                          "border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.1);"
-                                ),
-                                fill=False
+                            ui.div(
+                                ui.output_plot("combined_strike_zone_plot", height="900px"),  # SINGLE LARGE PLOT
+                                class_="card",
+                                style="padding: 25px; margin: 20px auto; background-color: white; "
+                                      "border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.1); "
+                                      "max-width: 1200px;"
                             ),
-                            style="margin-top: 20px;"
+                            style="margin-top: 20px; text-align: center;"
                         )
                     ),
                     ui.nav_panel(
@@ -715,30 +707,12 @@ def server(input, output, session):
 
     @output
     @render.plot
-    def stolen_strikes_plot():
+    def combined_strike_zone_plot():
         df = filtered_data()
         if df is None:
-            return create_strike_zone_plot(pd.DataFrame(), "Strikes Stolen")
-        df_ss = df[df["StolenStrike"] == 1] if "StolenStrike" in df.columns else pd.DataFrame()
-        return create_strike_zone_plot(
-            df_ss, 
-            "Strikes Stolen", 
-            stolen=True,
-            show_heatmap=input.show_heatmap(),
-            show_dots=input.show_dots()
-        )
-
-    @output
-    @render.plot
-    def lost_strikes_plot():
-        df = filtered_data()
-        if df is None:
-            return create_strike_zone_plot(pd.DataFrame(), "Strikes Lost", stolen=False)
-        df_ls = df[df["StrikeLost"] == 1] if "StrikeLost" in df.columns else pd.DataFrame()
-        return create_strike_zone_plot(
-            df_ls, 
-            "Strikes Lost", 
-            stolen=False,
+            return create_combined_strike_zone_plot(pd.DataFrame())
+        return create_combined_strike_zone_plot(
+            df,
             show_heatmap=input.show_heatmap(),
             show_dots=input.show_dots()
         )
