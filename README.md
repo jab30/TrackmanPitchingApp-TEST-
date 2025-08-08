@@ -1,8 +1,8 @@
 ---
-title: TrackmanCatchingApp
-emoji: 🌍
-colorFrom: yellow
-colorTo: indigo
+title: CatchingApp
+emoji: 🧤
+colorFrom: pink
+colorTo: purple
 sdk: docker
 pinned: false
 license: mit
