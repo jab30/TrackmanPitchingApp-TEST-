@@ -517,7 +517,7 @@ app_ui = ui.page_fluid(
         ),
         ui.div(
             ui.div(
-                ui.h2("⚾ KSU Baseball Analytics Dashboard", 
+                ui.h2("KSU Catching Dashboard", 
                      style="color: #343a40; text-align: center; margin-bottom: 30px;"),
                 ui.div(
                     ui.h3("📈 Game Performance Summary", style="color: #2c3e50; margin-bottom: 25px; text-align: center; font-weight: 700;"),
@@ -795,7 +795,7 @@ def server(input, output, session):
                    ha="center", va="center", transform=ax.transAxes,
                    fontsize=16, color='black', fontweight='bold')
             ax.set_title("Throw Speed Distribution", fontsize=18, fontweight="bold", color='black', pad=20)
-            return fig='bold')
+            return fig
             ax.set_title("Throw Speed Distribution", fontsize=18, fontweight="bold", color='white', pad=20)
             return fig
 
