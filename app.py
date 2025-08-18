@@ -262,9 +262,9 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True, show_dots: bool = True):
     """Create a combined strike zone visualization showing both stolen and lost strikes."""
-    # Create figure with dark background - LARGE SIZE
-    fig = plt.figure(figsize=(20, 16), facecolor='#1e1e1e')
-    ax = fig.add_subplot(111, facecolor='#2d2d2d')
+    # Create figure with white background - LARGE SIZE
+    fig = plt.figure(figsize=(20, 16), facecolor='white')
+    ax = fig.add_subplot(111, facecolor='white')
     
     # Enhanced strike zone with gradient effect
     strike_zone = Rectangle(
@@ -277,7 +277,7 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
     # Add strike zone shadow for depth
     shadow_zone = Rectangle(
         (-0.825, 1.495), 1.65, 1.86,
-        linewidth=1, edgecolor='#333333', facecolor='none',
+        linewidth=1, edgecolor='#cccccc', facecolor='none',
         alpha=0.3
     )
     ax.add_patch(shadow_zone)
@@ -285,7 +285,7 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
     # Enhanced home plate with better styling
     plate_x = [-0.708, 0.708, 0.708, 0, -0.708, -0.708]
     plate_y = [0.15, 0.15, 0.3, 0.5, 0.3, 0.15]
-    ax.plot(plate_x, plate_y, color='white', linewidth=3, alpha=0.9)
+    ax.plot(plate_x, plate_y, color='black', linewidth=3, alpha=0.9)
     ax.fill(plate_x, plate_y, color='#f0f0f0', alpha=0.3)
 
     # Determine which column holds the pitch type
@@ -298,12 +298,12 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
         ax.text(
             0.5, 0.5, "No data available for strike zone analysis",
             ha='center', va='center', transform=ax.transAxes, 
-            fontsize=16, color='white', fontweight='bold'
+            fontsize=16, color='black', fontweight='bold'
         )
         ax.set_xlim(-2.5, 2.5)
         ax.set_ylim(-0.5, 4.5)
-        ax.set_title("Combined Strike Zone Analysis", fontsize=20, fontweight='bold', color='white', pad=20)
-        ax.set_facecolor('#2d2d2d')
+        ax.set_title("Combined Strike Zone Analysis", fontsize=20, fontweight='bold', color='black', pad=20)
+        ax.set_facecolor('white')
         return fig
 
     # Get stolen and lost strikes data
@@ -356,7 +356,7 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
                     ax.scatter(
                         subset["PlateLocSide"], subset["PlateLocHeight"],
                         c=color, s=200, alpha=0.9, marker='o',
-                        edgecolors="white", linewidth=2.5,
+                        edgecolors="black", linewidth=2.5,
                         label=f"Stolen - {ptype} ({len(subset)})",
                         zorder=10
                     )
@@ -387,12 +387,12 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
     
     subtitle = f"Stolen: {stolen_count} | Lost: {lost_count} | Net: {net_advantage:+d}"
     ax.set_title(f"Combined Strike Zone Analysis\n{subtitle}", fontsize=24, fontweight="bold", 
-                color='white', pad=25)
+                color='black', pad=25)
     
     # Remove ticks and add grid
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.grid(True, alpha=0.2, color='white')
+    ax.grid(True, alpha=0.2, color='gray')
     
     # Enhanced legend with explanation
     if show_dots and (not stolen_pts.empty or not lost_pts.empty):
@@ -402,7 +402,7 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
             # Add custom legend entries for symbols
             legend_elements.extend([
                 Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
-                       markersize=12, label='● = Stolen Strikes', markeredgecolor='white', markeredgewidth=2),
+                       markersize=12, label='● = Stolen Strikes', markeredgecolor='black', markeredgewidth=2),
                 Line2D([0], [0], marker='s', color='w', markerfacecolor='gray', 
                        markersize=12, label='■ = Lost Strikes', markeredgecolor='black', markeredgewidth=2),
                 Line2D([0], [0], color='none', label='')  # Spacer
@@ -418,9 +418,9 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
         legend = ax.legend(all_handles, all_labels, bbox_to_anchor=(1.05, 1), loc="upper left",
                           fontsize=9, frameon=True, fancybox=True,
                           shadow=True, framealpha=0.9, markerscale=1.0)
-        legend.get_frame().set_facecolor('#3d3d3d')
+        legend.get_frame().set_facecolor('white')
         for text in legend.get_texts():
-            text.set_color('white')
+            text.set_color('black')
     
     # Adjust layout - more space since no colorbar
     fig.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.1)
@@ -430,19 +430,19 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
 
 def create_distribution_plot(data, title, xlabel, color, bins=15):
     """Create enhanced distribution plots for throw analysis."""
-    fig, ax = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
-    ax.set_facecolor('#2d2d2d')
+    fig, ax = plt.subplots(figsize=(10, 6), facecolor='white')
+    ax.set_facecolor('white')
     
     if data.empty:
         ax.text(0.5, 0.5, f"No {xlabel.lower()} data available",
                 ha="center", va="center", transform=ax.transAxes, 
-                fontsize=16, color='white', fontweight='bold')
-        ax.set_title(title, fontsize=18, fontweight="bold", color='white', pad=20)
+                fontsize=16, color='black', fontweight='bold')
+        ax.set_title(title, fontsize=18, fontweight="bold", color='black', pad=20)
         return fig
 
     # Create histogram with enhanced styling
     n, bins_edges, patches = ax.hist(data.dropna(), bins=bins, color=color, 
-                                   alpha=0.8, edgecolor='white', linewidth=1.5)
+                                   alpha=0.8, edgecolor='black', linewidth=1.5)
     
     # Color gradient for bars
     for i, patch in enumerate(patches):
@@ -455,23 +455,23 @@ def create_distribution_plot(data, title, xlabel, color, bins=15):
     
     stats_text = f"Mean: {mean_val:.2f}\nMedian: {median_val:.2f}\nStd: {std_val:.2f}"
     ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
-            verticalalignment='top', fontsize=12, color='white',
-            bbox=dict(boxstyle="round,pad=0.3", facecolor='#3d3d3d', alpha=0.8))
+            verticalalignment='top', fontsize=12, color='black',
+            bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgray', alpha=0.8))
     
     # Enhanced styling
-    ax.set_title(title, fontsize=18, fontweight="bold", color='white', pad=20)
-    ax.set_xlabel(xlabel, fontsize=14, color='white', fontweight='bold')
-    ax.set_ylabel("Frequency", fontsize=14, color='white', fontweight='bold')
+    ax.set_title(title, fontsize=18, fontweight="bold", color='black', pad=20)
+    ax.set_xlabel(xlabel, fontsize=14, color='black', fontweight='bold')
+    ax.set_ylabel("Frequency", fontsize=14, color='black', fontweight='bold')
     
     # Style the axes
-    ax.tick_params(colors='white', labelsize=12)
-    ax.spines['bottom'].set_color('white')
-    ax.spines['top'].set_color('white')
-    ax.spines['right'].set_color('white')
-    ax.spines['left'].set_color('white')
+    ax.tick_params(colors='black', labelsize=12)
+    ax.spines['bottom'].set_color('black')
+    ax.spines['top'].set_color('black')
+    ax.spines['right'].set_color('black')
+    ax.spines['left'].set_color('black')
     
     # Add grid
-    ax.grid(True, alpha=0.3, color='white')
+    ax.grid(True, alpha=0.3, color='gray')
     
     plt.tight_layout()
     return fig
@@ -675,6 +675,9 @@ def server(input, output, session):
         if input.date_range() and "Date" in df.columns:
             start_date, end_date = input.date_range()
             if start_date and end_date:
+                # Convert date objects to pandas datetime for comparison
+                start_date = pd.to_datetime(start_date)
+                end_date = pd.to_datetime(end_date)
                 df = df[(df["Date"] >= start_date) & (df["Date"] <= end_date)]
         
         # Filter by catcher
@@ -763,12 +766,12 @@ def server(input, output, session):
                 "#17a2b8"
             )
         else:
-            fig, ax = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
-            ax.set_facecolor('#2d2d2d')
+            fig, ax = plt.subplots(figsize=(10, 6), facecolor='white')
+            ax.set_facecolor('white')
             ax.text(0.5, 0.5, "No pop time data available", 
                    ha="center", va="center", transform=ax.transAxes,
-                   fontsize=16, color='white', fontweight='bold')
-            ax.set_title("Pop Time Distribution", fontsize=18, fontweight="bold", color='white', pad=20)
+                   fontsize=16, color='black', fontweight='bold')
+            ax.set_title("Pop Time Distribution", fontsize=18, fontweight="bold", color='black', pad=20)
             return fig
 
     # Throw Speed Plot
@@ -786,11 +789,13 @@ def server(input, output, session):
                 "#28a745"
             )
         else:
-            fig, ax = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
-            ax.set_facecolor('#2d2d2d')
+            fig, ax = plt.subplots(figsize=(10, 6), facecolor='white')
+            ax.set_facecolor('white')
             ax.text(0.5, 0.5, "No throw speed data available",
                    ha="center", va="center", transform=ax.transAxes,
-                   fontsize=16, color='white', fontweight='bold')
+                   fontsize=16, color='black', fontweight='bold')
+            ax.set_title("Throw Speed Distribution", fontsize=18, fontweight="bold", color='black', pad=20)
+            return fig='bold')
             ax.set_title("Throw Speed Distribution", fontsize=18, fontweight="bold", color='white', pad=20)
             return fig
 
@@ -838,43 +843,43 @@ def server(input, output, session):
         pitch_type_col = next((c for c in df.columns if "PitchType" in c or "TaggedPitchType" in c), None)
         
         if not pitch_type_col or df.empty:
-            fig, ax = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
-            ax.set_facecolor('#2d2d2d')
+            fig, ax = plt.subplots(figsize=(10, 6), facecolor='white')
+            ax.set_facecolor('white')
             ax.text(0.5, 0.5, "No pitch type data available",
                    ha="center", va="center", transform=ax.transAxes,
-                   fontsize=16, color='white', fontweight='bold')
-            ax.set_title("Pitch Type Distribution", fontsize=18, fontweight="bold", color='white', pad=20)
+                   fontsize=16, color='black', fontweight='bold')
+            ax.set_title("Pitch Type Distribution", fontsize=18, fontweight="bold", color='black', pad=20)
             return fig
         
         # Create pitch type distribution
         pitch_counts = df[pitch_type_col].value_counts()
         
-        fig, ax = plt.subplots(figsize=(12, 8), facecolor='#1e1e1e')
-        ax.set_facecolor('#2d2d2d')
+        fig, ax = plt.subplots(figsize=(12, 8), facecolor='white')
+        ax.set_facecolor('white')
         
         # Create bar plot with custom colors
         colors = [pitch_colors.get(pitch, '#795548') for pitch in pitch_counts.index]
-        bars = ax.bar(pitch_counts.index, pitch_counts.values, color=colors, alpha=0.8, edgecolor='white', linewidth=1.5)
+        bars = ax.bar(pitch_counts.index, pitch_counts.values, color=colors, alpha=0.8, edgecolor='black', linewidth=1.5)
         
         # Add value labels on bars
         for bar in bars:
             height = bar.get_height()
             ax.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
-                   f'{int(height)}', ha='center', va='bottom', color='white', fontweight='bold')
+                   f'{int(height)}', ha='center', va='bottom', color='black', fontweight='bold')
         
-        ax.set_title("Pitch Type Distribution", fontsize=18, fontweight="bold", color='white', pad=20)
-        ax.set_xlabel("Pitch Type", fontsize=14, color='white', fontweight='bold')
-        ax.set_ylabel("Count", fontsize=14, color='white', fontweight='bold')
+        ax.set_title("Pitch Type Distribution", fontsize=18, fontweight="bold", color='black', pad=20)
+        ax.set_xlabel("Pitch Type", fontsize=14, color='black', fontweight='bold')
+        ax.set_ylabel("Count", fontsize=14, color='black', fontweight='bold')
         
         # Style the axes
-        ax.tick_params(colors='white', labelsize=12, rotation=45)
-        ax.spines['bottom'].set_color('white')
-        ax.spines['top'].set_color('white')
-        ax.spines['right'].set_color('white')
-        ax.spines['left'].set_color('white')
+        ax.tick_params(colors='black', labelsize=12, rotation=45)
+        ax.spines['bottom'].set_color('black')
+        ax.spines['top'].set_color('black')
+        ax.spines['right'].set_color('black')
+        ax.spines['left'].set_color('black')
         
         # Add grid
-        ax.grid(True, alpha=0.3, color='white')
+        ax.grid(True, alpha=0.3, color='gray')
         
         plt.tight_layout()
         return fig
@@ -885,12 +890,12 @@ def server(input, output, session):
         df = filtered_data()
         
         if df.empty or "Date" not in df.columns:
-            fig, ax = plt.subplots(figsize=(12, 6), facecolor='#1e1e1e')
-            ax.set_facecolor('#2d2d2d')
+            fig, ax = plt.subplots(figsize=(12, 6), facecolor='white')
+            ax.set_facecolor('white')
             ax.text(0.5, 0.5, "No date data available for trends",
                    ha="center", va="center", transform=ax.transAxes,
-                   fontsize=16, color='white', fontweight='bold')
-            ax.set_title("Performance Trends Over Time", fontsize=18, fontweight="bold", color='white', pad=20)
+                   fontsize=16, color='black', fontweight='bold')
+            ax.set_title("Performance Trends Over Time", fontsize=18, fontweight="bold", color='black', pad=20)
             return fig
         
         # Group by date and calculate daily metrics
@@ -904,35 +909,35 @@ def server(input, output, session):
         daily_stats['NetStrikes'] = daily_stats['StolenStrike'] - daily_stats['StrikeLost']
         daily_stats['QualityPct'] = (daily_stats['QualityPitchIndicator'] / daily_stats['TotalPitches'] * 100)
         
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), facecolor='#1e1e1e')
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), facecolor='white')
         
         # Plot 1: Net Strikes Over Time
-        ax1.set_facecolor('#2d2d2d')
+        ax1.set_facecolor('white')
         ax1.plot(daily_stats.index, daily_stats['NetStrikes'], 
                 marker='o', linewidth=2, markersize=6, color='#17a2b8')
-        ax1.axhline(y=0, color='white', linestyle='--', alpha=0.5)
-        ax1.set_title("Net Strikes Trend", fontsize=16, fontweight="bold", color='white')
-        ax1.set_ylabel("Net Strikes", fontsize=12, color='white', fontweight='bold')
-        ax1.tick_params(colors='white', labelsize=10)
-        ax1.grid(True, alpha=0.3, color='white')
+        ax1.axhline(y=0, color='black', linestyle='--', alpha=0.5)
+        ax1.set_title("Net Strikes Trend", fontsize=16, fontweight="bold", color='black')
+        ax1.set_ylabel("Net Strikes", fontsize=12, color='black', fontweight='bold')
+        ax1.tick_params(colors='black', labelsize=10)
+        ax1.grid(True, alpha=0.3, color='gray')
         
         # Style spines
         for spine in ax1.spines.values():
-            spine.set_color('white')
+            spine.set_color('black')
         
         # Plot 2: Quality Pitch Percentage Over Time
-        ax2.set_facecolor('#2d2d2d')
+        ax2.set_facecolor('white')
         ax2.plot(daily_stats.index, daily_stats['QualityPct'], 
                 marker='s', linewidth=2, markersize=6, color='#28a745')
-        ax2.set_title("Quality Pitch Percentage Trend", fontsize=16, fontweight="bold", color='white')
-        ax2.set_xlabel("Date", fontsize=12, color='white', fontweight='bold')
-        ax2.set_ylabel("Quality Pitch %", fontsize=12, color='white', fontweight='bold')
-        ax2.tick_params(colors='white', labelsize=10)
-        ax2.grid(True, alpha=0.3, color='white')
+        ax2.set_title("Quality Pitch Percentage Trend", fontsize=16, fontweight="bold", color='black')
+        ax2.set_xlabel("Date", fontsize=12, color='black', fontweight='bold')
+        ax2.set_ylabel("Quality Pitch %", fontsize=12, color='black', fontweight='bold')
+        ax2.tick_params(colors='black', labelsize=10)
+        ax2.grid(True, alpha=0.3, color='gray')
         
         # Style spines
         for spine in ax2.spines.values():
-            spine.set_color('white')
+            spine.set_color('black')
         
         plt.tight_layout()
         return fig
