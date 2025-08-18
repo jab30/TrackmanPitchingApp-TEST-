@@ -386,7 +386,7 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
     net_advantage = stolen_count - lost_count
     
     subtitle = f"Stolen: {stolen_count} | Lost: {lost_count} | Net: {net_advantage:+d}"
-    ax.set_title(f"Combined Strike Zone Analysis\n{subtitle}", fontsize=24, fontweight="bold", 
+    ax.set_title(f"Combined Strike Zone Analysis - KEN_OWL\n{subtitle}", fontsize=24, fontweight="bold", 
                 color='black', pad=25)
     
     # Remove ticks and add grid
@@ -477,7 +477,7 @@ def create_distribution_plot(data, title, xlabel, color, bins=15):
     return fig
 
 
-# Enhanced UI with better styling
+# Enhanced UI with KEN_OWL filter
 app_ui = ui.page_fluid(
     # Add custom CSS for better styling
     ui.tags.head(
@@ -495,17 +495,15 @@ app_ui = ui.page_fluid(
         ui.sidebar(
             ui.div(
                 ui.h4("🔍 Filter Options", style="color: #17a2b8; margin-bottom: 20px;"),
+                ui.div(
+                    ui.h5("🥎 Catcher: KEN_OWL", style="color: #28a745; margin-bottom: 15px; font-weight: bold;"),
+                    style="background-color: #d4edda; padding: 10px; border-radius: 5px; border: 1px solid #c3e6cb;"
+                ),
                 ui.input_date_range(
                     "date_range",
                     "Select Date Range",
                     start=None,
                     end=None
-                ),
-                ui.input_select(
-                    "catcher",
-                    "Catcher",
-                    choices=[],
-                    multiple=False,
                 ),
                 ui.hr(style="border-color: #6c757d;"),
                 ui.h4("📊 Plot Options", style="color: #17a2b8; margin-bottom: 20px;"),
@@ -517,7 +515,7 @@ app_ui = ui.page_fluid(
         ),
         ui.div(
             ui.div(
-                ui.h2("KSU Catching Dashboard", 
+                ui.h2("KSU Catching Dashboard - KEN_OWL Analysis", 
                      style="color: #343a40; text-align: center; margin-bottom: 30px;"),
                 ui.div(
                     ui.h3("📈 Game Performance Summary", style="color: #2c3e50; margin-bottom: 25px; text-align: center; font-weight: 700;"),
@@ -647,12 +645,6 @@ def server(input, output, session):
         df = load_data()
         
         if not df.empty:
-            # Update catcher choices
-            catcher_col = next((c for c in df.columns if "catcher" in c.lower()), None)
-            if catcher_col:
-                catchers = ["All"] + sorted(df[catcher_col].dropna().unique().tolist())
-                ui.update_select("catcher", choices=catchers, selected="All")
-            
             # Update date range
             if "Date" in df.columns and not df["Date"].isna().all():
                 min_date = df["Date"].min()
@@ -663,13 +655,18 @@ def server(input, output, session):
                     end=max_date
                 )
 
-    # Filter data based on inputs
+    # Filter data for KEN_OWL only
     @reactive.calc
     def filtered_data():
         df = load_data()
         
         if df.empty:
             return df
+        
+        # Filter for KEN_OWL catcher only
+        catcher_col = next((c for c in df.columns if "catcher" in c.lower()), None)
+        if catcher_col:
+            df = df[df[catcher_col] == "KEN_OWL"]
         
         # Filter by date range
         if input.date_range() and "Date" in df.columns:
@@ -680,12 +677,6 @@ def server(input, output, session):
                 end_date = pd.to_datetime(end_date)
                 df = df[(df["Date"] >= start_date) & (df["Date"] <= end_date)]
         
-        # Filter by catcher
-        if input.catcher() and input.catcher() != "All":
-            catcher_col = next((c for c in df.columns if "catcher" in c.lower()), None)
-            if catcher_col:
-                df = df[df[catcher_col] == input.catcher()]
-        
         return df
 
     # KSU Summary Text
@@ -693,7 +684,7 @@ def server(input, output, session):
     def ksu_summary_text():
         df = filtered_data()
         if df.empty:
-            return "No data available for the selected filters."
+            return "No data available for KEN_OWL in the selected date range."
         
         total_pitches = len(df)
         stolen_strikes = df["StolenStrike"].sum() if "StolenStrike" in df.columns else 0
@@ -706,7 +697,7 @@ def server(input, output, session):
         else:
             stolen_pct = lost_pct = 0
         
-        return (f"Total Pitches: {total_pitches:,} | "
+        return (f"KEN_OWL Performance - Total Pitches: {total_pitches:,} | "
                 f"Stolen Strikes: {stolen_strikes} ({stolen_pct:.1f}%) | "
                 f"Lost Strikes: {lost_strikes} ({lost_pct:.1f}%) | "
                 f"Net Advantage: {net_strikes:+d}")
@@ -716,7 +707,7 @@ def server(input, output, session):
     def ksu_summary_table():
         df = filtered_data()
         if df.empty:
-            return pd.DataFrame({"Metric": ["No data"], "Value": ["available"]})
+            return pd.DataFrame({"Metric": ["No data"], "Value": ["available for KEN_OWL"]})
         
         # Calculate various metrics
         metrics = {}
@@ -761,17 +752,17 @@ def server(input, output, session):
             pop_times = pd.to_numeric(df[pop_time_col], errors='coerce')
             return create_distribution_plot(
                 pop_times, 
-                "Pop Time Distribution", 
+                "Pop Time Distribution - KEN_OWL", 
                 "Pop Time (seconds)", 
                 "#17a2b8"
             )
         else:
             fig, ax = plt.subplots(figsize=(10, 6), facecolor='white')
             ax.set_facecolor('white')
-            ax.text(0.5, 0.5, "No pop time data available", 
+            ax.text(0.5, 0.5, "No pop time data available for KEN_OWL", 
                    ha="center", va="center", transform=ax.transAxes,
                    fontsize=16, color='black', fontweight='bold')
-            ax.set_title("Pop Time Distribution", fontsize=18, fontweight="bold", color='black', pad=20)
+            ax.set_title("Pop Time Distribution - KEN_OWL", fontsize=18, fontweight="bold", color='black', pad=20)
             return fig
 
     # Throw Speed Plot
@@ -784,19 +775,17 @@ def server(input, output, session):
             throw_speeds = pd.to_numeric(df[throw_speed_col], errors='coerce')
             return create_distribution_plot(
                 throw_speeds,
-                "Throw Speed Distribution",
+                "Throw Speed Distribution - KEN_OWL",
                 "Throw Speed (mph)",
                 "#28a745"
             )
         else:
             fig, ax = plt.subplots(figsize=(10, 6), facecolor='white')
             ax.set_facecolor('white')
-            ax.text(0.5, 0.5, "No throw speed data available",
+            ax.text(0.5, 0.5, "No throw speed data available for KEN_OWL",
                    ha="center", va="center", transform=ax.transAxes,
                    fontsize=16, color='black', fontweight='bold')
-            ax.set_title("Throw Speed Distribution", fontsize=18, fontweight="bold", color='black', pad=20)
-            return fig
-            ax.set_title("Throw Speed Distribution", fontsize=18, fontweight="bold", color='white', pad=20)
+            ax.set_title("Throw Speed Distribution - KEN_OWL", fontsize=18, fontweight="bold", color='black', pad=20)
             return fig
 
     # Throw Summary Table
@@ -804,7 +793,7 @@ def server(input, output, session):
     def throw_summary_table():
         df = filtered_data()
         if df.empty:
-            return pd.DataFrame({"Metric": ["No data"], "Value": ["available"]})
+            return pd.DataFrame({"Metric": ["No data"], "Value": ["available for KEN_OWL"]})
         
         metrics = {}
         
@@ -832,7 +821,7 @@ def server(input, output, session):
                 {"Metric": k, "Value": v} for k, v in metrics.items()
             ])
         else:
-            summary_df = pd.DataFrame({"Metric": ["No throwing data"], "Value": ["available"]})
+            summary_df = pd.DataFrame({"Metric": ["No throwing data"], "Value": ["available for KEN_OWL"]})
         
         return summary_df
 
@@ -845,10 +834,10 @@ def server(input, output, session):
         if not pitch_type_col or df.empty:
             fig, ax = plt.subplots(figsize=(10, 6), facecolor='white')
             ax.set_facecolor('white')
-            ax.text(0.5, 0.5, "No pitch type data available",
+            ax.text(0.5, 0.5, "No pitch type data available for KEN_OWL",
                    ha="center", va="center", transform=ax.transAxes,
                    fontsize=16, color='black', fontweight='bold')
-            ax.set_title("Pitch Type Distribution", fontsize=18, fontweight="bold", color='black', pad=20)
+            ax.set_title("Pitch Type Distribution - KEN_OWL", fontsize=18, fontweight="bold", color='black', pad=20)
             return fig
         
         # Create pitch type distribution
@@ -867,7 +856,7 @@ def server(input, output, session):
             ax.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
                    f'{int(height)}', ha='center', va='bottom', color='black', fontweight='bold')
         
-        ax.set_title("Pitch Type Distribution", fontsize=18, fontweight="bold", color='black', pad=20)
+        ax.set_title("Pitch Type Distribution - KEN_OWL", fontsize=18, fontweight="bold", color='black', pad=20)
         ax.set_xlabel("Pitch Type", fontsize=14, color='black', fontweight='bold')
         ax.set_ylabel("Count", fontsize=14, color='black', fontweight='bold')
         
@@ -892,10 +881,10 @@ def server(input, output, session):
         if df.empty or "Date" not in df.columns:
             fig, ax = plt.subplots(figsize=(12, 6), facecolor='white')
             ax.set_facecolor('white')
-            ax.text(0.5, 0.5, "No date data available for trends",
+            ax.text(0.5, 0.5, "No date data available for trends - KEN_OWL",
                    ha="center", va="center", transform=ax.transAxes,
                    fontsize=16, color='black', fontweight='bold')
-            ax.set_title("Performance Trends Over Time", fontsize=18, fontweight="bold", color='black', pad=20)
+            ax.set_title("Performance Trends Over Time - KEN_OWL", fontsize=18, fontweight="bold", color='black', pad=20)
             return fig
         
         # Group by date and calculate daily metrics
@@ -916,7 +905,7 @@ def server(input, output, session):
         ax1.plot(daily_stats.index, daily_stats['NetStrikes'], 
                 marker='o', linewidth=2, markersize=6, color='#17a2b8')
         ax1.axhline(y=0, color='black', linestyle='--', alpha=0.5)
-        ax1.set_title("Net Strikes Trend", fontsize=16, fontweight="bold", color='black')
+        ax1.set_title("Net Strikes Trend - KEN_OWL", fontsize=16, fontweight="bold", color='black')
         ax1.set_ylabel("Net Strikes", fontsize=12, color='black', fontweight='bold')
         ax1.tick_params(colors='black', labelsize=10)
         ax1.grid(True, alpha=0.3, color='gray')
@@ -929,7 +918,7 @@ def server(input, output, session):
         ax2.set_facecolor('white')
         ax2.plot(daily_stats.index, daily_stats['QualityPct'], 
                 marker='s', linewidth=2, markersize=6, color='#28a745')
-        ax2.set_title("Quality Pitch Percentage Trend", fontsize=16, fontweight="bold", color='black')
+        ax2.set_title("Quality Pitch Percentage Trend - KEN_OWL", fontsize=16, fontweight="bold", color='black')
         ax2.set_xlabel("Date", fontsize=12, color='black', fontweight='bold')
         ax2.set_ylabel("Quality Pitch %", fontsize=12, color='black', fontweight='bold')
         ax2.tick_params(colors='black', labelsize=10)
@@ -948,7 +937,7 @@ def server(input, output, session):
     def print_report():
         # This would generate a detailed report
         # For now, we'll just show a message
-        ui.notification_show("Report generation feature coming soon!", type="message")
+        ui.notification_show("KEN_OWL detailed report generation feature coming soon!", type="message")
 
 
 # Create the app
