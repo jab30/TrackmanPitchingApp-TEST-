@@ -11,10 +11,6 @@ from matplotlib.patches import Rectangle
 import matplotlib.patches as patches
 from matplotlib.lines import Line2D
 
-# Set matplotlib style for better aesthetics
-plt.style.use('seaborn-v0_8-darkgrid')
-sns.set_palette("husl")
-
 # Define pitch color mapping with more vibrant colors
 pitch_colors = {
     "Fastball": '#FF1744',
@@ -419,9 +415,9 @@ def create_combined_strike_zone_plot(df: pd.DataFrame, show_heatmap: bool = True
         all_handles = legend_elements + handles
         all_labels = [elem.get_label() for elem in legend_elements] + labels
         
-        legend = ax.legend(all_handles, all_labels, bbox_to_anchor=(1.05, 1), loc="upper left",  # MOVED LEFT
-                          fontsize=9, frameon=True, fancybox=True,  # SMALLER FONT SIZE
-                          shadow=True, framealpha=0.9, markerscale=1.0)  # SMALLER MARKERS
+        legend = ax.legend(all_handles, all_labels, bbox_to_anchor=(1.05, 1), loc="upper left",
+                          fontsize=9, frameon=True, fancybox=True,
+                          shadow=True, framealpha=0.9, markerscale=1.0)
         legend.get_frame().set_facecolor('#3d3d3d')
         for text in legend.get_texts():
             text.set_color('white')
@@ -564,7 +560,7 @@ app_ui = ui.page_fluid(
                         "🎯 Strike Zone Analysis",
                         ui.div(
                             ui.div(
-                                ui.output_plot("combined_strike_zone_plot", height="900px"),  # SINGLE LARGE PLOT
+                                ui.output_plot("combined_strike_zone_plot", height="900px"),
                                 class_="card",
                                 style="padding: 25px; margin: 20px auto; background-color: white; "
                                       "border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.1); "
@@ -589,233 +585,366 @@ app_ui = ui.page_fluid(
                                 style="padding: 20px; margin: 15px 0; background-color: white;"
                             ),
                             ui.div(
-                                ui.h4("⏱️ Detailed Pop Time Data", style="color: #343a40;"),
-                                ui.output_table("pop_time_table"),
-                                class_="card table-responsive",
+                                ui.h4("📈 Throwing Performance Summary", style="color: #343a40;"),
+                                ui.output_table("throw_summary_table"),
+                                class_="card",
                                 style="padding: 20px; margin: 15px 0; background-color: white;"
-                            ),
-                            style="margin-top: 20px;"
+                            )
                         )
                     ),
-                ),
-                style="max-width: 1400px; margin: 0 auto;"
-            )
+                    ui.nav_panel(
+                        "📊 Performance Metrics",
+                        ui.div(
+                            ui.div(
+                                ui.h4("⚾ Pitch Type Analysis", style="color: #343a40;"),
+                                ui.output_plot("pitch_type_plot"),
+                                class_="card",
+                                style="padding: 20px; margin: 15px 0; background-color: white;"
+                            ),
+                            ui.div(
+                                ui.h4("📈 Performance Trends", style="color: #343a40;"),
+                                ui.output_plot("performance_trends_plot"),
+                                class_="card",
+                                style="padding: 20px; margin: 15px 0; background-color: white;"
+                            )
+                        )
+                    )
+                )
+            ),
+            style="padding: 20px;"
         )
     )
 )
 
 
 def server(input, output, session):
-    @reactive.Calc
-    def raw_data():
-        """Read and combine all CSV files from the TrackmanCSV's folder"""
-        try:
-            dfs = []
-            for file_path in csv_paths:
-                try:
-                    df = pd.read_csv(file_path)
-                except UnicodeDecodeError:
-                    df = pd.read_csv(file_path, encoding="latin-1")
-                except Exception:
-                    df = pd.read_csv(file_path, sep=None, engine="python")
-                
-                # Add filename as a column to track source
-                df['SourceFile'] = os.path.basename(file_path)
-                dfs.append(df)
+    # Load and combine all CSV data
+    @reactive.calc
+    def load_data():
+        all_data = []
+        for csv_path in csv_paths:
+            try:
+                df = pd.read_csv(csv_path)
+                df = compute_indicators(df)
+                all_data.append(df)
+            except Exception as e:
+                print(f"Error loading {csv_path}: {e}")
+        
+        if all_data:
+            combined_df = pd.concat(all_data, ignore_index=True)
             
-            if not dfs:
-                return None
-                
-            # Combine all dataframes
-            combined_df = pd.concat(dfs, ignore_index=True)
-            
-            # Convert date column if it exists
+            # Convert Date column to datetime if it exists
             if "Date" in combined_df.columns:
                 combined_df["Date"] = pd.to_datetime(combined_df["Date"], errors='coerce')
-
-            # Filter for KEN_OWL team
-            team_col = next(
-                (c for c in combined_df.columns if "PitcherTeam" in c or "pitcher_team" in c.lower() or "team" in c.lower()),
-                None
-            )
-            if team_col:
-                combined_df = combined_df[combined_df[team_col] == "KEN_OWL"]
-
-            combined_df = compute_indicators(combined_df)
+            
             return combined_df
+        else:
+            return pd.DataFrame()
 
-        except Exception as e:
-            print(f"Error loading data: {str(e)}")
-            return None
-
-    @reactive.Calc
-    def filtered_data():
-        """Apply all filters to the data"""
-        df = raw_data()
-        if df is None:
-            return None
-
-        # Apply date filter if dates are selected
-        date_range = input.date_range()
-        if date_range and "Date" in df.columns:
-            start_date = pd.to_datetime(date_range[0])
-            end_date = pd.to_datetime(date_range[1])
-            df = df[(df["Date"] >= start_date) & (df["Date"] <= end_date)]
-
-        # Apply catcher filter
-        catcher = input.catcher()
-        if catcher:
-            catcher_col = next(
-                (c for c in df.columns if "Catcher" in c or "catcher" in c.lower()),
-                None
-            )
+    # Update UI choices based on loaded data
+    @reactive.effect
+    def update_choices():
+        df = load_data()
+        
+        if not df.empty:
+            # Update catcher choices
+            catcher_col = next((c for c in df.columns if "catcher" in c.lower()), None)
             if catcher_col:
-                df = df[df[catcher_col] == catcher]
+                catchers = ["All"] + sorted(df[catcher_col].dropna().unique().tolist())
+                ui.update_select("catcher", choices=catchers, selected="All")
+            
+            # Update date range
+            if "Date" in df.columns and not df["Date"].isna().all():
+                min_date = df["Date"].min()
+                max_date = df["Date"].max()
+                ui.update_date_range(
+                    "date_range",
+                    start=min_date,
+                    end=max_date
+                )
 
+    # Filter data based on inputs
+    @reactive.calc
+    def filtered_data():
+        df = load_data()
+        
+        if df.empty:
+            return df
+        
+        # Filter by date range
+        if input.date_range() and "Date" in df.columns:
+            start_date, end_date = input.date_range()
+            if start_date and end_date:
+                df = df[(df["Date"] >= start_date) & (df["Date"] <= end_date)]
+        
+        # Filter by catcher
+        if input.catcher() and input.catcher() != "All":
+            catcher_col = next((c for c in df.columns if "catcher" in c.lower()), None)
+            if catcher_col:
+                df = df[df[catcher_col] == input.catcher()]
+        
         return df
 
-    @reactive.Effect
-    def update_catcher_choices():
-        df = raw_data()
-        if df is None:
-            return
-        catcher_col = next(
-            (c for c in df.columns if "Catcher" in c or "catcher" in c.lower()),
-            None
-        )
-        if catcher_col is None:
-            return
-        catchers = sorted(df[catcher_col].dropna().astype(str).unique())
-        ui.update_select("catcher", choices=catchers, session=session)
-
-    @reactive.Calc
-    def ksu_summary_df():
-        df = filtered_data()
-        if df is None or df.empty:
-            return pd.DataFrame({
-                "KSU Strikes Stolen": [0],
-                "KSU Strikes Lost": [0],
-                "KSU Game +/-": [0]
-            })
-        stolen = int(df["StolenStrike"].sum()) if "StolenStrike" in df.columns else 0
-        lost = int(df["StrikeLost"].sum()) if "StrikeLost" in df.columns else 0
-        net = stolen - lost
-        return pd.DataFrame({
-            "KSU Strikes Stolen": [stolen],
-            "KSU Strikes Lost": [lost],
-            "KSU Game +/-": [net]
-        })
-
-    @output
+    # KSU Summary Text
     @render.text
     def ksu_summary_text():
-        df = ksu_summary_df()
+        df = filtered_data()
         if df.empty:
-            return "Strikes Stolen: 0  •  Strikes Lost: 0  •  Net Advantage: 0"
-        stolen = int(df["KSU Strikes Stolen"].iloc[0])
-        lost = int(df["KSU Strikes Lost"].iloc[0])
-        net = int(df["KSU Game +/-"].iloc[0])
+            return "No data available for the selected filters."
         
-        # Add performance indicator
-        if net > 0:
-            indicator = "✅ POSITIVE"
-        elif net < 0:
-            indicator = "⚠️ NEGATIVE"
+        total_pitches = len(df)
+        stolen_strikes = df["StolenStrike"].sum() if "StolenStrike" in df.columns else 0
+        lost_strikes = df["StrikeLost"].sum() if "StrikeLost" in df.columns else 0
+        net_strikes = stolen_strikes - lost_strikes
+        
+        if total_pitches > 0:
+            stolen_pct = (stolen_strikes / total_pitches) * 100
+            lost_pct = (lost_strikes / total_pitches) * 100
         else:
-            indicator = "➖ NEUTRAL"
-            
-        return f"Strikes Stolen: {stolen}  •  Strikes Lost: {lost}  •  Net Advantage: {net} ({indicator})"
+            stolen_pct = lost_pct = 0
+        
+        return (f"Total Pitches: {total_pitches:,} | "
+                f"Stolen Strikes: {stolen_strikes} ({stolen_pct:.1f}%) | "
+                f"Lost Strikes: {lost_strikes} ({lost_pct:.1f}%) | "
+                f"Net Advantage: {net_strikes:+d}")
 
-    @output
+    # KSU Summary Table
     @render.table
     def ksu_summary_table():
-        return ksu_summary_df()
+        df = filtered_data()
+        if df.empty:
+            return pd.DataFrame({"Metric": ["No data"], "Value": ["available"]})
+        
+        # Calculate various metrics
+        metrics = {}
+        
+        # Basic counts
+        metrics["Total Pitches"] = len(df)
+        metrics["Strike Zone %"] = f"{(df['StrikeZoneIndicator'].sum() / len(df) * 100):.1f}%" if "StrikeZoneIndicator" in df.columns else "N/A"
+        metrics["First Pitch Strikes"] = f"{df['FPSindicator'].sum()}" if "FPSindicator" in df.columns else "N/A"
+        metrics["Quality Pitches"] = f"{df['QualityPitchIndicator'].sum()}" if "QualityPitchIndicator" in df.columns else "N/A"
+        
+        # Swing metrics
+        if "SwingIndicator" in df.columns:
+            swings = df["SwingIndicator"].sum()
+            whiffs = df["WhiffIndicator"].sum() if "WhiffIndicator" in df.columns else 0
+            metrics["Total Swings"] = swings
+            metrics["Whiff Rate"] = f"{(whiffs / swings * 100):.1f}%" if swings > 0 else "0.0%"
+        
+        # Convert to DataFrame
+        summary_df = pd.DataFrame([
+            {"Metric": k, "Value": v} for k, v in metrics.items()
+        ])
+        
+        return summary_df
 
-    @output
+    # Combined Strike Zone Plot
     @render.plot
     def combined_strike_zone_plot():
         df = filtered_data()
-        if df is None:
-            return create_combined_strike_zone_plot(pd.DataFrame())
         return create_combined_strike_zone_plot(
-            df,
-            show_heatmap=input.show_heatmap(),
+            df, 
+            show_heatmap=input.show_heatmap(), 
             show_dots=input.show_dots()
         )
 
-    @reactive.Effect
-    def _():
-        # Force plot updates when switches change
-        input.show_heatmap()
-        input.show_dots()
-
-    @reactive.Calc
-    def throwlog_df():
-        """Filter by selected catcher, then keep only rows with a non-null PopTime."""
-        df = filtered_data()
-        if df is None or "PopTime" not in df.columns:
-            return pd.DataFrame()
-        df2 = df[df["PopTime"].notna()].copy()
-        needed = [
-            c
-            for c in ["PitchNo", "Pitcher", "Catcher", "ThrowSpeed", "PopTime"]
-            if c in df2.columns
-        ]
-        return df2[needed]
-
-    @output
+    # Pop Time Plot
     @render.plot
     def pop_time_plot():
-        df = throwlog_df()
-        if df.empty or "PopTime" not in df.columns:
-            return create_distribution_plot(pd.Series(), "Pop Time Distribution", 
-                                          "Pop Time (seconds)", "#3F51B5")
+        df = filtered_data()
+        pop_time_col = next((c for c in df.columns if "poptime" in c.lower() or "pop_time" in c.lower()), None)
         
-        return create_distribution_plot(df["PopTime"], "Pop Time Distribution", 
-                                      "Pop Time (seconds)", "#3F51B5")
+        if pop_time_col and pop_time_col in df.columns:
+            pop_times = pd.to_numeric(df[pop_time_col], errors='coerce')
+            return create_distribution_plot(
+                pop_times, 
+                "Pop Time Distribution", 
+                "Pop Time (seconds)", 
+                "#17a2b8"
+            )
+        else:
+            fig, ax = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
+            ax.set_facecolor('#2d2d2d')
+            ax.text(0.5, 0.5, "No pop time data available", 
+                   ha="center", va="center", transform=ax.transAxes,
+                   fontsize=16, color='white', fontweight='bold')
+            ax.set_title("Pop Time Distribution", fontsize=18, fontweight="bold", color='white', pad=20)
+            return fig
 
-    @output
+    # Throw Speed Plot
     @render.plot
     def throw_speed_plot():
-        df = throwlog_df()
-        if df.empty or "ThrowSpeed" not in df.columns:
-            return create_distribution_plot(pd.Series(), "Throw Speed Distribution", 
-                                          "Throw Speed (mph)", "#FF9800")
+        df = filtered_data()
+        throw_speed_col = next((c for c in df.columns if "throwspeed" in c.lower() or "throw_speed" in c.lower()), None)
         
-        return create_distribution_plot(df["ThrowSpeed"], "Throw Speed Distribution", 
-                                      "Throw Speed (mph)", "#FF9800")
+        if throw_speed_col and throw_speed_col in df.columns:
+            throw_speeds = pd.to_numeric(df[throw_speed_col], errors='coerce')
+            return create_distribution_plot(
+                throw_speeds,
+                "Throw Speed Distribution",
+                "Throw Speed (mph)",
+                "#28a745"
+            )
+        else:
+            fig, ax = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
+            ax.set_facecolor('#2d2d2d')
+            ax.text(0.5, 0.5, "No throw speed data available",
+                   ha="center", va="center", transform=ax.transAxes,
+                   fontsize=16, color='white', fontweight='bold')
+            ax.set_title("Throw Speed Distribution", fontsize=18, fontweight="bold", color='white', pad=20)
+            return fig
 
-    @output
+    # Throw Summary Table
     @render.table
-    def pop_time_table():
-        """Show a table of PopTime values for every pitch (filtered by selected catcher)."""
-        df = throwlog_df()
-        if df.empty or "PopTime" not in df.columns:
-            return pd.DataFrame({"Message": ["No PopTime data available"]})
+    def throw_summary_table():
+        df = filtered_data()
+        if df.empty:
+            return pd.DataFrame({"Metric": ["No data"], "Value": ["available"]})
         
-        # Enhanced table with better formatting
-        cols = [c for c in ["PitchNo", "Catcher", "PopTime", "ThrowSpeed"] if c in df.columns]
-        result_df = df[cols].copy()
+        metrics = {}
         
-        # Format the columns for better display
-        if "PopTime" in result_df.columns:
-            result_df["Pop Time (sec)"] = result_df["PopTime"].round(3)
-            result_df = result_df.drop("PopTime", axis=1)
+        # Pop time metrics
+        pop_time_col = next((c for c in df.columns if "poptime" in c.lower() or "pop_time" in c.lower()), None)
+        if pop_time_col:
+            pop_times = pd.to_numeric(df[pop_time_col], errors='coerce').dropna()
+            if not pop_times.empty:
+                metrics["Avg Pop Time"] = f"{pop_times.mean():.3f}s"
+                metrics["Best Pop Time"] = f"{pop_times.min():.3f}s"
+                metrics["Pop Time Std"] = f"{pop_times.std():.3f}s"
         
-        if "ThrowSpeed" in result_df.columns:
-            result_df["Throw Speed (mph)"] = result_df["ThrowSpeed"].round(1)
-            result_df = result_df.drop("ThrowSpeed", axis=1)
-            
-        return result_df.head(20)  # Limit to first 20 rows for better display
+        # Throw speed metrics
+        throw_speed_col = next((c for c in df.columns if "throwspeed" in c.lower() or "throw_speed" in c.lower()), None)
+        if throw_speed_col:
+            throw_speeds = pd.to_numeric(df[throw_speed_col], errors='coerce').dropna()
+            if not throw_speeds.empty:
+                metrics["Avg Throw Speed"] = f"{throw_speeds.mean():.1f} mph"
+                metrics["Max Throw Speed"] = f"{throw_speeds.max():.1f} mph"
+                metrics["Throw Speed Std"] = f"{throw_speeds.std():.1f} mph"
+        
+        # Convert to DataFrame
+        if metrics:
+            summary_df = pd.DataFrame([
+                {"Metric": k, "Value": v} for k, v in metrics.items()
+            ])
+        else:
+            summary_df = pd.DataFrame({"Metric": ["No throwing data"], "Value": ["available"]})
+        
+        return summary_df
 
-    @reactive.Effect
+    # Pitch Type Plot
+    @render.plot
+    def pitch_type_plot():
+        df = filtered_data()
+        pitch_type_col = next((c for c in df.columns if "PitchType" in c or "TaggedPitchType" in c), None)
+        
+        if not pitch_type_col or df.empty:
+            fig, ax = plt.subplots(figsize=(10, 6), facecolor='#1e1e1e')
+            ax.set_facecolor('#2d2d2d')
+            ax.text(0.5, 0.5, "No pitch type data available",
+                   ha="center", va="center", transform=ax.transAxes,
+                   fontsize=16, color='white', fontweight='bold')
+            ax.set_title("Pitch Type Distribution", fontsize=18, fontweight="bold", color='white', pad=20)
+            return fig
+        
+        # Create pitch type distribution
+        pitch_counts = df[pitch_type_col].value_counts()
+        
+        fig, ax = plt.subplots(figsize=(12, 8), facecolor='#1e1e1e')
+        ax.set_facecolor('#2d2d2d')
+        
+        # Create bar plot with custom colors
+        colors = [pitch_colors.get(pitch, '#795548') for pitch in pitch_counts.index]
+        bars = ax.bar(pitch_counts.index, pitch_counts.values, color=colors, alpha=0.8, edgecolor='white', linewidth=1.5)
+        
+        # Add value labels on bars
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
+                   f'{int(height)}', ha='center', va='bottom', color='white', fontweight='bold')
+        
+        ax.set_title("Pitch Type Distribution", fontsize=18, fontweight="bold", color='white', pad=20)
+        ax.set_xlabel("Pitch Type", fontsize=14, color='white', fontweight='bold')
+        ax.set_ylabel("Count", fontsize=14, color='white', fontweight='bold')
+        
+        # Style the axes
+        ax.tick_params(colors='white', labelsize=12, rotation=45)
+        ax.spines['bottom'].set_color('white')
+        ax.spines['top'].set_color('white')
+        ax.spines['right'].set_color('white')
+        ax.spines['left'].set_color('white')
+        
+        # Add grid
+        ax.grid(True, alpha=0.3, color='white')
+        
+        plt.tight_layout()
+        return fig
+
+    # Performance Trends Plot
+    @render.plot
+    def performance_trends_plot():
+        df = filtered_data()
+        
+        if df.empty or "Date" not in df.columns:
+            fig, ax = plt.subplots(figsize=(12, 6), facecolor='#1e1e1e')
+            ax.set_facecolor('#2d2d2d')
+            ax.text(0.5, 0.5, "No date data available for trends",
+                   ha="center", va="center", transform=ax.transAxes,
+                   fontsize=16, color='white', fontweight='bold')
+            ax.set_title("Performance Trends Over Time", fontsize=18, fontweight="bold", color='white', pad=20)
+            return fig
+        
+        # Group by date and calculate daily metrics
+        daily_stats = df.groupby('Date').agg({
+            'StolenStrike': 'sum',
+            'StrikeLost': 'sum',
+            'QualityPitchIndicator': 'sum' if 'QualityPitchIndicator' in df.columns else 'count',
+            'Date': 'count'  # Total pitches
+        }).rename(columns={'Date': 'TotalPitches'})
+        
+        daily_stats['NetStrikes'] = daily_stats['StolenStrike'] - daily_stats['StrikeLost']
+        daily_stats['QualityPct'] = (daily_stats['QualityPitchIndicator'] / daily_stats['TotalPitches'] * 100)
+        
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), facecolor='#1e1e1e')
+        
+        # Plot 1: Net Strikes Over Time
+        ax1.set_facecolor('#2d2d2d')
+        ax1.plot(daily_stats.index, daily_stats['NetStrikes'], 
+                marker='o', linewidth=2, markersize=6, color='#17a2b8')
+        ax1.axhline(y=0, color='white', linestyle='--', alpha=0.5)
+        ax1.set_title("Net Strikes Trend", fontsize=16, fontweight="bold", color='white')
+        ax1.set_ylabel("Net Strikes", fontsize=12, color='white', fontweight='bold')
+        ax1.tick_params(colors='white', labelsize=10)
+        ax1.grid(True, alpha=0.3, color='white')
+        
+        # Style spines
+        for spine in ax1.spines.values():
+            spine.set_color('white')
+        
+        # Plot 2: Quality Pitch Percentage Over Time
+        ax2.set_facecolor('#2d2d2d')
+        ax2.plot(daily_stats.index, daily_stats['QualityPct'], 
+                marker='s', linewidth=2, markersize=6, color='#28a745')
+        ax2.set_title("Quality Pitch Percentage Trend", fontsize=16, fontweight="bold", color='white')
+        ax2.set_xlabel("Date", fontsize=12, color='white', fontweight='bold')
+        ax2.set_ylabel("Quality Pitch %", fontsize=12, color='white', fontweight='bold')
+        ax2.tick_params(colors='white', labelsize=10)
+        ax2.grid(True, alpha=0.3, color='white')
+        
+        # Style spines
+        for spine in ax2.spines.values():
+            spine.set_color('white')
+        
+        plt.tight_layout()
+        return fig
+
+    # Print button functionality (placeholder)
+    @reactive.effect
     @reactive.event(input.print_button)
-    def _():
-        session.send_custom_message("print", {})
-        print("Print button clicked")  # Debug print
+    def print_report():
+        # This would generate a detailed report
+        # For now, we'll just show a message
+        ui.notification_show("Report generation feature coming soon!", type="message")
 
 
+# Create the app
 app = App(app_ui, server)
-
-if __name__ == "__main__":
-    app.run()
