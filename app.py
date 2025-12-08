@@ -2755,7 +2755,4 @@ def server(input, output, session):
         }
 
 
-# At the very end, replace the last line
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=7860)
+app = App(app_ui, server)
