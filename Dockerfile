@@ -1,13 +1,15 @@
-FROM python:3.12
+# 1) Base image
+FROM python:3.10-slim
 
-WORKDIR /code
+# 2) Set working directory
+WORKDIR /app
 
-COPY ./requirements.txt /code/requirements.txt
+# 3) Copy & install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
-
+# 4) Copy your app code
 COPY . .
 
-EXPOSE 7860
-
-CMD ["shiny", "run", "app.py", "--host", "0.0.0.0", "--port", "7860"]
+# 5) Run Shiny on 0.0.0.0:7860
+CMD ["python", "-m", "shiny", "run", "app.py", "--host", "0.0.0.0", "--port", "7860"]
