@@ -1,6 +1,7 @@
-shiny>=0.8.0
-pandas>=2.0
-matplotlib>=3.5
-seaborn>=0.12
+shiny>=1.4.0
+pandas
+numpy
+matplotlib
+seaborn
 jinja2>=3.0
-scipy
+plotly
