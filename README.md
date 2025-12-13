@@ -1,8 +1,8 @@
 ---
-title: CatchingApp
+title: PitchuingApp
 emoji: 🧤
 colorFrom: pink
-colorTo: purple
+colorTo: blue
 sdk: docker
 pinned: false
 license: mit
