@@ -1,5 +1,5 @@
 ---
-title: PitchuingApp
+title: PitchingApp
 emoji: 🧤
 colorFrom: pink
 colorTo: blue
