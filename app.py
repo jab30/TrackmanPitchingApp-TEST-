@@ -1119,7 +1119,7 @@ def server(input, output, session):
                     print(f"  PAs: {unique_pas}, IP: {ip:.2f}")
 
             if ip > 0:
-                fip_constant = 4.31
+                fip_constant = 3.135
                 fip_numerator = (13 * hr_count) + (3 * (bb_count + hbp_count)) - (2 * k_count)
                 summary["FIP"] = round((fip_numerator / ip) + fip_constant, 2)
                 if view_mode:
