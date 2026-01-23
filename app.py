@@ -1104,13 +1104,14 @@ def server(input, output, session):
             k_count = len(data[data["KorBB"] == "Strikeout"])
             bb_count = len(data[data["KorBB"] == "Walk"])
 
-            # Calculate IP from outs (most accurate method)
+            # Calculate IP from outs (OutsOnPlay + Strikeouts)
             if "OutsOnPlay" in data.columns:
-                outs = data["OutsOnPlay"].sum()
-                ip = outs / 3.0
+                outs_from_play = data["OutsOnPlay"].sum()
+                total_outs = outs_from_play + k_count
+                ip = total_outs / 3.0
                 if view_mode:
                     print(f"\nFIP Debug:")
-                    print(f"  Outs: {outs}, IP: {ip:.2f}")
+                    print(f"  OutsOnPlay: {outs_from_play}, Strikeouts: {k_count}, Total Outs: {total_outs}, IP: {ip:.2f}")
                     print(f"  HR: {hr_count}, BB: {bb_count}, HBP: {hbp_count}, K: {k_count}")
             else:
                 ip = unique_pas / 3.33
