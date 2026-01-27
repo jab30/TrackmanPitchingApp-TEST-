@@ -333,8 +333,8 @@ if "Pitcher" in df.columns:
 
 if "PlateLocHeight" in df.columns and "PlateLocSide" in df.columns:
     df["inZone"] = np.where(
-        (df["PlateLocHeight"].between(1.5, 3.6)) &  # Slightly wider height range
-        (df["PlateLocSide"].between(-0.83, 0.83)), 1, 0  # Slightly wider horizontal range (17 inches / 12 / 2)
+        (df["PlateLocHeight"].between(1.6, 3.5)) &  # Slightly wider height range
+        (df["PlateLocSide"].between(-0.85, 0.85)), 1, 0  # Slightly wider horizontal range (17 inches / 12 / 2)
     )
     # DIAGNOSTIC: Print zone statistics
     print(f"\nStrike Zone Diagnostic:")
@@ -690,10 +690,10 @@ def add_origin_lines(ax):
 
 
 def add_strike_zone(ax):
-    ax.plot([-.83, .83], [1.5, 1.5], color="b", linewidth=1)
-    ax.plot([-.83, .83], [3.6, 3.6], color="b", linewidth=1)
-    ax.plot([-.83, -.83], [1.5, 3.6], color="b", linewidth=1)
-    ax.plot([.83, .83], [1.5, 3.6], color="b", linewidth=1)
+    ax.plot([-.85, .85], [1.6, 1.6], color="b", linewidth=1)
+    ax.plot([-.85, .85], [3.5, 3.5], color="b", linewidth=1)
+    ax.plot([-.85, -.85], [1.6, 3.5], color="b", linewidth=1)
+    ax.plot([.85, .85], [1.6, 3.5], color="b", linewidth=1)
 
 
 def confidence_ellipse(x, y, ax, edgecolor, n_std=0.5, facecolor="none", **kwargs):
