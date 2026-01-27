@@ -204,7 +204,6 @@ except ImportError:
   def arm_angle_calc(df, rosters):
   return df
 
-
 def convert_to_inches(height_str):
   if pd.isna(height_str):
   return np.nan
@@ -218,10 +217,8 @@ except:
   return np.nan
 return np.nan
 
-
 def arm_angle_categories(df):
   return df
-
 
 def pitch_colors():
   return {}
