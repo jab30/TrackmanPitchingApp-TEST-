@@ -1072,15 +1072,25 @@ def server(input, output, session):
         else:
             unique_pas = len(data)
 
-        print(f"Unique PAs: {unique_pas}")
-        # ADD DEBUGGING HERE
-    if view_mode:
-        print(f"\n{'='*50}")
-        print(f"TEAM VIEW K%/BB% DEBUGGING")
-        print(f"{'='*50}")
-        print(f"Total pitches in data: {len(data)}")
-        print(f"Unique PAs calculated: {unique_pas}")
-        print(f"{'='*50}\n")
+        # DEBUGGING - already inside the function where view_mode exists
+        if view_mode:
+            print(f"\n{'='*50}")
+            print(f"TEAM VIEW K%/BB% DEBUGGING")
+            print(f"{'='*50}")
+            print(f"Total pitches in data: {len(data)}")
+            print(f"Unique PAs calculated: {unique_pas}")
+            if "Inning" in data.columns and "PAofInning" in data.columns:
+                print(f"\nGrouping columns present: Inning, PAofInning")
+                grouped_pas = data.groupby(["Inning", "PAofInning"])
+                print(f"Number of unique Inning+PAofInning combinations: {len(grouped_pas)}")
+            if "KorBB" in data.columns:
+                k_count = len(data[data["KorBB"] == "Strikeout"])
+                bb_count = len(data[data["KorBB"] == "Walk"])
+                print(f"\nStrikeouts: {k_count}")
+                print(f"Walks: {bb_count}")
+                print(f"K%: {(k_count / unique_pas * 100):.1f}%")
+                print(f"BB%: {(bb_count / unique_pas * 100):.1f}%")
+            print(f"{'='*50}\n")
 
         # K%
         if "KorBB" in data.columns:
