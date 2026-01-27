@@ -201,8 +201,8 @@ try:
   from functions import arm_angle_calc, convert_to_inches, arm_angle_categories, pitch_colors
 except ImportError:
   # Fallback functions if functions.py doesn't exist
-def arm_angle_calc(df, rosters):
-    return df
+  def arm_angle_calc(df, rosters):
+  return df
 
 
 def convert_to_inches(height_str):
