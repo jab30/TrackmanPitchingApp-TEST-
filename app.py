@@ -1064,21 +1064,23 @@ def server(input, output, session):
         # Calculate overall stats (not by pitch type)
         summary = {}
 
-        # Count unique plate appearances
-        if all(col in data.columns for col in ["GameID", "Inning", "Top/Bottom", "PAofInning"]):
-            unique_pas = data.groupby(["GameID", "Inning", "Top/Bottom", "PAofInning"]).ngroups
-            if view_mode:
-                print(f"\nUnique PAs (with Top/Bottom): {unique_pas}")
-        elif all(col in data.columns for col in ["CustomGameID", "Inning", "Top/Bottom", "PAofInning"]):
-            unique_pas = data.groupby(["CustomGameID", "Inning", "Top/Bottom", "PAofInning"]).ngroups
-        elif all(col in data.columns for col in ["Date", "Inning", "Top/Bottom", "PAofInning"]):
-            unique_pas = data.groupby(["Date", "Inning", "Top/Bottom", "PAofInning"]).ngroups
-        elif all(col in data.columns for col in ["GameID", "Inning", "PAofInning"]):
-            unique_pas = data.groupby(["GameID", "Inning", "PAofInning"]).ngroups
+# Count unique plate appearances (batters faced)
+        if all(col in data.columns for col in ["Inning", "PAofInning"]):
+            unique_pas = len(data.groupby(["Inning", "PAofInning"]))
         elif "KorBB" in data.columns:
             unique_pas = len(data[data["KorBB"] != "Undefined"])
         else:
             unique_pas = len(data)
+
+        print(f"Unique PAs: {unique_pas}")
+        # ADD DEBUGGING HERE
+    if view_mode:
+        print(f"\n{'='*50}")
+        print(f"TEAM VIEW K%/BB% DEBUGGING")
+        print(f"{'='*50}")
+        print(f"Total pitches in data: {len(data)}")
+        print(f"Unique PAs calculated: {unique_pas}")
+        print(f"{'='*50}\n")
 
         # K%
         if "KorBB" in data.columns:
