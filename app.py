@@ -689,11 +689,11 @@ def add_origin_lines(ax):
     ax.axvline(0, color="black", linestyle="-", linewidth=0.5)
 
 
-def add_strike_zone(ax):
-    ax.plot([-1, 1], [1.6, 1.6], color="b", linewidth=1)
-    ax.plot([-1, 1], [3.7, 3.7], color="b", linewidth=1)
-    ax.plot([-1, -1], [1.6, 3.7], color="b", linewidth=1)
-    ax.plot([1, 1], [1.6, 3.7], color="b", linewidth=1)
+def add_strike_zone(ax):    
+    ax.plot([-0.85, 0.85], [1.6, 1.6], color="b", linewidth=1)    
+    ax.plot([-0.85, 0.85], [3.4, 3.4], color="b", linewidth=1)    
+    ax.plot([-0.85, -0.85], [1.6, 3.4], color="b", linewidth=1)    
+    ax.plot([0.85, 0.85], [1.6, 3.4], color="b", linewidth=1)
 
 
 def confidence_ellipse(x, y, ax, edgecolor, n_std=0.5, facecolor="none", **kwargs):
