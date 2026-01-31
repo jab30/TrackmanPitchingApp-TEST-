@@ -1096,28 +1096,42 @@ def server(input, output, session):
 
         # FIP - Fielding Independent Pitching: ((13*HR)+(3*(BB+HBP))-(2*K))/IP + 3.135
         if "KorBB" in data.columns:
+            # --- PA-ending rows ---
+            pa_end = data[
+                (data["KorBB"].notna() & (data["KorBB"] != "Undefined")) |
+                (data["PitchCall"] == "InPlay") |
+                (data["PitchCall"] == "HitByPitch")
+            ]
+
+            # --- counts (PA-ending only) ---
             hr_count = 0
-            if "PlayResult" in data.columns:
-                hr_count = len(data[data["PlayResult"] == "HomeRun"])
+            if "PlayResult" in pa_end.columns:
+                hr_count = len(pa_end[pa_end["PlayResult"] == "HomeRun"])
 
-            hbp_count = len(data[data["KorBB"] == "HitByPitch"])
-            k_count = len(data[data["KorBB"] == "Strikeout"])
-            bb_count = len(data[data["KorBB"] == "Walk"])
+            k_count  = len(pa_end[pa_end["KorBB"] == "Strikeout"])
+            bb_count = len(pa_end[pa_end["KorBB"] == "Walk"])
 
-            # Calculate IP from outs (OutsOnPlay + Strikeouts)
-            if "OutsOnPlay" in data.columns:
-                outs_from_play = data["OutsOnPlay"].sum()
-                total_outs = outs_from_play + k_count
-                ip = total_outs / 3.0
+            # HBP may live in PitchCall or KorBB depending on source
+            hbp_count = 0
+            if "PitchCall" in pa_end.columns:
+                hbp_count += len(pa_end[pa_end["PitchCall"] == "HitByPitch"])
+            if "KorBB" in pa_end.columns:
+                hbp_count += len(pa_end[pa_end["KorBB"] == "HitByPitch"])
+
+            # --- IP from OutsOnPlay only (do NOT add k_count; avoids double counting) ---
+            if "OutsOnPlay" in pa_end.columns:
+                outs_from_play = pa_end["OutsOnPlay"].fillna(0).sum()
+                ip = outs_from_play / 3.0
                 if view_mode:
-                    print(f"\nFIP Debug:")
-                    print(f"  OutsOnPlay: {outs_from_play}, Strikeouts: {k_count}, Total Outs: {total_outs}, IP: {ip:.2f}")
+                    print(f"\nFIP Debug (fixed):")
+                    print(f"  OutsOnPlay: {outs_from_play}, IP: {ip:.2f}")
                     print(f"  HR: {hr_count}, BB: {bb_count}, HBP: {hbp_count}, K: {k_count}")
             else:
                 ip = unique_pas / 3.33
                 if view_mode:
                     print(f"\nFIP Debug (estimated IP):")
                     print(f"  PAs: {unique_pas}, IP: {ip:.2f}")
+                    print(f"  HR: {hr_count}, BB: {bb_count}, HBP: {hbp_count}, K: {k_count}")
 
             if ip > 0:
                 fip_constant = 3.135
