@@ -1134,7 +1134,7 @@ def server(input, output, session):
                     print(f"  HR: {hr_count}, BB: {bb_count}, HBP: {hbp_count}, K: {k_count}")
 
             if ip > 0:
-                fip_constant = 3.135
+                fip_constant = 3.18
                 fip_numerator = (13 * hr_count) + (3 * (bb_count + hbp_count)) - (2 * k_count)
                 summary["FIP"] = round((fip_numerator / ip) + fip_constant, 2)
                 if view_mode:
