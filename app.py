@@ -1094,7 +1094,7 @@ def server(input, output, session):
         else:
             summary["BB%"] = 0.0
 
-        # FIP - Fielding Independent Pitching: ((13*HR)+(3*(BB+HBP))-(2*K))/IP + 3.135
+      # FIP - Fielding Independent Pitching: ((13*HR)+(3*(BB+HBP))-(2*K))/IP + 3.18
         if "KorBB" in data.columns:
             # --- PA-ending rows ---
             pa_end = data[
@@ -1118,13 +1118,14 @@ def server(input, output, session):
             if "KorBB" in pa_end.columns:
                 hbp_count += len(pa_end[pa_end["KorBB"] == "HitByPitch"])
 
-            # --- IP from OutsOnPlay only (do NOT add k_count; avoids double counting) ---
+            # --- IP from OutsOnPlay + Strikeouts ---
             if "OutsOnPlay" in pa_end.columns:
                 outs_from_play = pa_end["OutsOnPlay"].fillna(0).sum()
-                ip = outs_from_play / 3.0
+                total_outs = outs_from_play + k_count
+                ip = total_outs / 3.0
                 if view_mode:
                     print(f"\nFIP Debug (fixed):")
-                    print(f"  OutsOnPlay: {outs_from_play}, IP: {ip:.2f}")
+                    print(f"  OutsOnPlay: {outs_from_play}, Strikeouts: {k_count}, Total Outs: {total_outs}, IP: {ip:.2f}")
                     print(f"  HR: {hr_count}, BB: {bb_count}, HBP: {hbp_count}, K: {k_count}")
             else:
                 ip = unique_pas / 3.33
