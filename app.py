@@ -10,7 +10,7 @@ import io
 import base64
 from datetime import date
 
-# Add this after the imports section
+# Addd this after the imports section
 SORTABLE_TABLE_JS = """
 <script>
 function makeSortable(tableId) {
