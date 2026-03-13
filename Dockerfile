@@ -12,4 +12,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # 5) Run Shiny on 0.0.0.0:7860
-CMD ["python", "-m", "shiny", "run", "app.py", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["python", "-m", "shiny", "run", "login_app.py", "--host", "0.0.0.0", "--port", "7860"]
