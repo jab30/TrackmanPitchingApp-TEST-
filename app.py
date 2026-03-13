@@ -356,43 +356,78 @@ if "Date" in df.columns:
         )
 
 # ── Stuff+ feature engineering ───────────────────────────────────────────────
+# StandardizedHB: flip HB sign for LHP so movement is always from pitcher's perspective
 if "PitcherThrows" in df.columns and "HorzBreak" in df.columns:
     df["StandardizedHB"] = np.where(df["PitcherThrows"] == "Left", -df["HorzBreak"], df["HorzBreak"])
+elif "HorzBreak" in df.columns:
+    df["StandardizedHB"] = df["HorzBreak"].copy()
 else:
-    df["StandardizedHB"] = df["HorzBreak"] if "HorzBreak" in df.columns else np.nan
+    df["StandardizedHB"] = np.nan
 
+# AdjustedVAA: VAA residual after removing height-based expectation per pitch type
+if "VertApprAngle" in df.columns and "PlateLocHeight" in df.columns and "PitchType" in df.columns:
+    df["VertApprAngle"] = pd.to_numeric(df["VertApprAngle"], errors="coerce")
+    df["PlateLocHeight"] = pd.to_numeric(df["PlateLocHeight"], errors="coerce")
+    df["_height_bin"] = pd.cut(df["PlateLocHeight"], bins=15)
+    _vaa_by_height = (
+        df.groupby(["PitchType", "_height_bin"], observed=True)["VertApprAngle"]
+        .mean().reset_index()
+        .rename(columns={"VertApprAngle": "_vaa_mean"})
+    )
+    df = df.merge(_vaa_by_height, on=["PitchType", "_height_bin"], how="left")
+    df["AdjustedVAA"] = df["VertApprAngle"] - df["_vaa_mean"]
+    df = df.drop(columns=["_height_bin", "_vaa_mean"], errors="ignore")
+else:
+    df["AdjustedVAA"] = np.nan
+
+# AdjustedHAA: HAA residual after removing side-based expectation per pitch type × hand
+if "HorzApprAngle" in df.columns and "PlateLocSide" in df.columns and "PitchType" in df.columns:
+    df["HorzApprAngle"] = pd.to_numeric(df["HorzApprAngle"], errors="coerce")
+    df["PlateLocSide"] = pd.to_numeric(df["PlateLocSide"], errors="coerce")
+    df["_side_bin"] = pd.cut(df["PlateLocSide"], bins=15)
+    _haa_grp_cols = ["PitchType", "_side_bin"]
+    if "PitcherThrows" in df.columns:
+        _haa_grp_cols = ["PitchType", "PitcherThrows", "_side_bin"]
+    _haa_by_side = (
+        df.groupby(_haa_grp_cols, observed=True)["HorzApprAngle"]
+        .mean().reset_index()
+        .rename(columns={"HorzApprAngle": "_haa_mean"})
+    )
+    df = df.merge(_haa_by_side, on=_haa_grp_cols, how="left")
+    df["AdjustedHAA"] = df["HorzApprAngle"] - df["_haa_mean"]
+    df = df.drop(columns=["_side_bin", "_haa_mean"], errors="ignore")
+else:
+    df["AdjustedHAA"] = np.nan
+
+# primaryFB, VeloDiff, IVBDiff, HBDiff — use Pitcher name as grouping key
 _fb_types = ["Fastball", "Sinker", "Cutter"]
 _bb_types = ["Curveball", "Slider", "Sweeper"]
 _os_types = ["Changeup", "Splitter"]
 
-if "PitchType" in df.columns and "PitcherId" in df.columns:
-    _fb_pitches = df[df["PitchType"].isin(_fb_types)]
-    _primary_fb = _fb_pitches.groupby(["PitcherId", "PitchType"]).size().reset_index(name="_cnt")
-    _primary_fb = _primary_fb.loc[_primary_fb.groupby("PitcherId")["_cnt"].idxmax()][["PitcherId", "PitchType"]].rename(columns={"PitchType": "primaryFB"})
-    df = df.merge(_primary_fb, on="PitcherId", how="left")
-    df["primaryFB"] = df["primaryFB"].fillna("Fastball")
+_grp_key = "PitcherId" if "PitcherId" in df.columns else ("Pitcher" if "Pitcher" in df.columns else None)
 
-    _fb_shapes = (df[df["PitchType"] == df.get("primaryFB", pd.Series(dtype=str))]
-                  .groupby("PitcherId")
-                  .agg(RelSpeedFBavg=("RelSpeed","mean"), InducedVertBreakFBavg=("InducedVertBreak","mean"), StandardizedHBFBavg=("StandardizedHB","mean"))
-                  .reset_index())
-    df = df.merge(_fb_shapes, on="PitcherId", how="left")
-    df["VeloDiff"] = df["RelSpeed"] - df.get("RelSpeedFBavg", pd.Series(dtype=float))
-    df["IVBDiff"]  = df["InducedVertBreak"] - df.get("InducedVertBreakFBavg", pd.Series(dtype=float))
-    df["HBDiff"]   = df["StandardizedHB"] - df.get("StandardizedHBFBavg", pd.Series(dtype=float))
-elif "PitchType" in df.columns:
-    # No PitcherId — compute simple FB averages per pitcher name
+if "PitchType" in df.columns and _grp_key is not None:
     _fb_pitches = df[df["PitchType"].isin(_fb_types)]
-    if "Pitcher" in df.columns and len(_fb_pitches) > 0:
-        _primary_fb = _fb_pitches.groupby(["Pitcher", "PitchType"]).size().reset_index(name="_cnt")
-        _primary_fb = _primary_fb.loc[_primary_fb.groupby("Pitcher")["_cnt"].idxmax()][["Pitcher", "PitchType"]].rename(columns={"PitchType": "primaryFB"})
-        df = df.merge(_primary_fb, on="Pitcher", how="left")
+    if len(_fb_pitches) > 0:
+        _primary_fb = _fb_pitches.groupby([_grp_key, "PitchType"]).size().reset_index(name="_cnt")
+        _primary_fb = _primary_fb.loc[
+            _primary_fb.groupby(_grp_key)["_cnt"].idxmax()
+        ][[_grp_key, "PitchType"]].rename(columns={"PitchType": "primaryFB"})
+        df = df.merge(_primary_fb, on=_grp_key, how="left")
         df["primaryFB"] = df["primaryFB"].fillna("Fastball")
-        _fb_shapes = (df[df["PitchType"] == df["primaryFB"]]
-                      .groupby("Pitcher")
-                      .agg(RelSpeedFBavg=("RelSpeed","mean"), InducedVertBreakFBavg=("InducedVertBreak","mean"), StandardizedHBFBavg=("StandardizedHB","mean"))
-                      .reset_index())
-        df = df.merge(_fb_shapes, on="Pitcher", how="left")
+        # FB shape averages — row-wise comparison PitchType == primaryFB
+        _fb_mask = df["PitchType"] == df["primaryFB"]
+        _fb_shapes = (
+            df[_fb_mask]
+            .groupby(_grp_key)
+            .agg(
+                RelSpeedFBavg=("RelSpeed", "mean"),
+                InducedVertBreakFBavg=("InducedVertBreak", "mean"),
+                StandardizedHBFBavg=("StandardizedHB", "mean"),
+            )
+            .reset_index()
+        )
+        df = df.merge(_fb_shapes, on=_grp_key, how="left")
         df["VeloDiff"] = df["RelSpeed"] - df["RelSpeedFBavg"]
         df["IVBDiff"]  = df["InducedVertBreak"] - df["InducedVertBreakFBavg"]
         df["HBDiff"]   = df["StandardizedHB"] - df["StandardizedHBFBavg"]
@@ -2356,10 +2391,9 @@ def server(input, output, session):
         total_df = pd.DataFrame([total_row])
         metrics = pd.concat([metrics, total_df], ignore_index=True)
 
-        # Create HTML table — iterate only display columns; aux cols (_min/_max/_sd) available via row.get()
+        # Create HTML table — use column_order to enforce display order; aux cols stay in metrics for tooltip
         _aux_sfx = ["_min","_max","_sd"]
-        _aux_cols = [c for c in metrics.columns if any(c.endswith(s) for s in _aux_sfx)]
-        _display_cols = [c for c in metrics.columns if c not in _aux_cols]
+        _display_cols = [c for c in column_order if c in metrics.columns]
         table_id = "metrics_table_" + str(hash(display_name) % 10000)
         html = f'<table id="{table_id}" style="border-collapse: collapse; width: 100%; font-size: 14px;">'
         html += '<thead><tr>'
