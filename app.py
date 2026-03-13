@@ -1098,23 +1098,22 @@ def _predict_xslg(exit_speeds, launch_angles):
 
 # ── Savant-style horizontal bar chart ─────────────────────────────────────────
 def _bar_color(pct: int, lower_is_better: bool) -> str:
-    """Blue=bad → grey=avg → red=good. pct is already the display percentile (flipped if needed)."""
+    """Blue=bad → #5e5757=avg → red=good. pct is already the display percentile (flipped if needed)."""
     effective = max(0, min(100, pct))
     if effective < 33:
         t = effective / 33.0
-        r = int(58  + (140 - 58)  * t)
-        g = int(112 + (170 - 112) * t)
-        b = int(184 + (195 - 184) * t)
+        r = int(58  + (94  - 58)  * t)
+        g = int(112 + (87  - 112) * t)
+        b = int(184 + (87  - 184) * t)
     elif effective < 67:
-        t = (effective - 33) / 34.0
-        r = int(140 + (210 - 140) * t)
-        g = int(170 + (185 - 170) * t)
-        b = int(195 + (195 - 195) * t)
+        r = 94
+        g = 87
+        b = 87
     else:
         t = (effective - 67) / 33.0
-        r = int(210 + (188 - 210) * t)
-        g = int(185 + (0   - 185) * t)
-        b = int(195 + (0   - 195) * t)
+        r = int(94  + (220 - 94)  * t)
+        g = int(87  + (0   - 87)  * t)
+        b = int(87  + (0   - 87)  * t)
     return f"rgb({r},{g},{b})"
 
 def make_savant_bars_html(row, title: str) -> str:
@@ -1128,7 +1127,7 @@ def make_savant_bars_html(row, title: str) -> str:
     # ── SVG layout constants ────────────────────────────────────────────────
     W          = 700        # total SVG width
     LEFT_PAD   = 110        # space for stat label
-    RIGHT_PAD  = 60         # space for raw value
+    RIGHT_PAD  = 80         # space for raw value
     BAR_AREA   = W - LEFT_PAD - RIGHT_PAD
     ROW_H      = 34
     BAR_H      = 16
@@ -1201,7 +1200,7 @@ def make_savant_bars_html(row, title: str) -> str:
         # Raw value (right)
         display_val = val_str if val_str else "—"
         parts.append(
-            f'<text x="{W - RIGHT_PAD + 8}" y="{bar_cy + 5}" text-anchor="start" '
+            f'<text x="{W - RIGHT_PAD + 12}" y="{bar_cy + 5}" text-anchor="start" '
             f'font-family="Barlow Condensed,sans-serif" font-size="12" font-weight="600" fill="#DDDDDD">'
             f'{display_val}</text>'
         )
@@ -1236,10 +1235,10 @@ def make_savant_bars_html(row, title: str) -> str:
                 f'fill="white">{pct}</text>'
             )
         else:
-            # N/A label in track
+            # N/A — show #2c2c2c background bar only (already drawn above)
             parts.append(
                 f'<text x="{LEFT_PAD + BAR_AREA/2}" y="{bar_cy + 4:.1f}" text-anchor="middle" '
-                f'font-family="Barlow,sans-serif" font-size="10" fill="#666">N/A</text>'
+                f'font-family="Barlow,sans-serif" font-size="10" fill="#555">—</text>'
             )
 
     # ── Footer dashes ───────────────────────────────────────────────────────
@@ -1885,21 +1884,24 @@ def server(input, output, session):
             for col, value in row.items():
                 if col == 'PitchType':
                     if value == 'TOTAL':
-                        html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: #333333; color: white; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
+                        html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: #2c2c2c; color: #E8E8E8; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
                     else:
                         color = pitch_colors_dict.get(value, "#9C8975")
                         html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: {color}; color: white; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
-                elif col in ['Vel', 'Extension'] and value != 0 and row['PitchType'] != 'TOTAL':
-                    # Color performance metrics
+                elif col in ['Vel', 'Extension'] and value != 0:
+                    # Color performance metrics (including TOTAL row)
                     style = get_performance_color(value, row['PitchType'], col)
                     formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(
                         value) else str(value)
-                    html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; {style}">{formatted_value}</td>'
+                    if row['PitchType'] == 'TOTAL':
+                        html += f'<td style="border: 1px solid #2c2c2c; padding: 8px; text-align: center; font-weight: bold; {style}">{formatted_value}</td>'
+                    else:
+                        html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; {style}">{formatted_value}</td>'
                 else:
                     formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(
                         value) else str(value)
                     if row['PitchType'] == 'TOTAL':
-                        html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold; background-color: #f0f0f0;">{formatted_value}</td>'
+                        html += f'<td style="border: 1px solid #2c2c2c; padding: 8px; text-align: center; font-weight: bold; background-color: #2c2c2c; color: #E8E8E8;">{formatted_value}</td>'
                     else:
                         html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{formatted_value}</td>'
             html += '</tr>'
@@ -2489,7 +2491,7 @@ def server(input, output, session):
             for col, value in row.items():
                 if col == 'PitchType':
                     if value == 'TOTAL':
-                        html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: #333333; color: white; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
+                        html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: #2c2c2c; color: #E8E8E8; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
                     else:
                         color = pitch_colors_dict.get(value, "#9C8975")
                         html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: {color}; color: white; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
@@ -2498,12 +2500,14 @@ def server(input, output, session):
                     style = get_performance_color(value, row['PitchType'], col)
                     formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(
                         value) else str(value)
-                    html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; {style}">{formatted_value}</td>'
+                    border_col = '#2c2c2c' if row['PitchType'] == 'TOTAL' else '#ddd'
+                    bold = 'font-weight: bold; ' if row['PitchType'] == 'TOTAL' else ''
+                    html += f'<td style="border: 1px solid {border_col}; padding: 8px; text-align: center; {bold}{style}">{formatted_value}</td>'
                 else:
                     formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(
                         value) else str(value)
                     if row['PitchType'] == 'TOTAL':
-                        html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold; background-color: #f0f0f0;">{formatted_value}</td>'
+                        html += f'<td style="border: 1px solid #2c2c2c; padding: 8px; text-align: center; font-weight: bold; background-color: #2c2c2c; color: #E8E8E8;">{formatted_value}</td>'
                     else:
                         html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{formatted_value}</td>'
             html += '</tr>'
