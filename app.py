@@ -433,14 +433,14 @@ def _rank_percentile(value: float, dist_col: str) -> int | None:
 # CSV stat col → (display label, lower_is_better, dist_col_for_rank)
 _PITCHING_PLUS_COLS = {
     "wOBA":          ("wOBA",          True,  "wOBA"),
-    "xSLG_computed": ("xSLG",          True,  "wOBA"),   # use wOBA dist as proxy; computed from model
+    "xSLG_computed": ("xSLG",          True,  "wOBA"),
     "K%":            ("K%",            False, "K%"),
     "BB%":           ("BB%",           True,  "BB%"),
     "Miss%":         ("Whiff%",        False, "Miss%"),
     "CSW%":          ("CSW%",          False, "CSW%"),
     "Chase%":        ("O-Swing%",      False, "Chase%"),
     "Swing%":        ("Swing%",        False, "Swing%"),
-    "iZ-Contact%":   ("Z-Contact%",    True,  "iZ-Contact%"),
+    "iZ-Contact%":   ("Z-Contact%",    False, "iZ-Contact%"),
     "vFB":           ("Fastball Velo", False, "vFB"),
     "Barrel%":       ("Barrel%",       True,  "Barrel%"),
     "HardHit%":      ("HardHit%",      True,  "HardHit%"),
