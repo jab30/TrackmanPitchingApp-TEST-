@@ -1,7 +1,7 @@
-shiny>=1.4.0
+shiny
+shinyswatch
 pandas
 numpy
-matplotlib
-seaborn
-jinja2>=3.0
 plotly
+scikit-learn
+xgboost
