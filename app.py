@@ -355,6 +355,54 @@ if "Date" in df.columns:
                 df["AwayTeam"].str[:3] + " @ " + df["HomeTeam"].str[:3]
         )
 
+# ── Stuff+ feature engineering ───────────────────────────────────────────────
+if "PitcherThrows" in df.columns and "HorzBreak" in df.columns:
+    df["StandardizedHB"] = np.where(df["PitcherThrows"] == "Left", -df["HorzBreak"], df["HorzBreak"])
+else:
+    df["StandardizedHB"] = df["HorzBreak"] if "HorzBreak" in df.columns else np.nan
+
+_fb_types = ["Fastball", "Sinker", "Cutter"]
+_bb_types = ["Curveball", "Slider", "Sweeper"]
+_os_types = ["Changeup", "Splitter"]
+
+if "PitchType" in df.columns and "PitcherId" in df.columns:
+    _fb_pitches = df[df["PitchType"].isin(_fb_types)]
+    _primary_fb = _fb_pitches.groupby(["PitcherId", "PitchType"]).size().reset_index(name="_cnt")
+    _primary_fb = _primary_fb.loc[_primary_fb.groupby("PitcherId")["_cnt"].idxmax()][["PitcherId", "PitchType"]].rename(columns={"PitchType": "primaryFB"})
+    df = df.merge(_primary_fb, on="PitcherId", how="left")
+    df["primaryFB"] = df["primaryFB"].fillna("Fastball")
+
+    _fb_shapes = (df[df["PitchType"] == df.get("primaryFB", pd.Series(dtype=str))]
+                  .groupby("PitcherId")
+                  .agg(RelSpeedFBavg=("RelSpeed","mean"), InducedVertBreakFBavg=("InducedVertBreak","mean"), StandardizedHBFBavg=("StandardizedHB","mean"))
+                  .reset_index())
+    df = df.merge(_fb_shapes, on="PitcherId", how="left")
+    df["VeloDiff"] = df["RelSpeed"] - df.get("RelSpeedFBavg", pd.Series(dtype=float))
+    df["IVBDiff"]  = df["InducedVertBreak"] - df.get("InducedVertBreakFBavg", pd.Series(dtype=float))
+    df["HBDiff"]   = df["StandardizedHB"] - df.get("StandardizedHBFBavg", pd.Series(dtype=float))
+elif "PitchType" in df.columns:
+    # No PitcherId — compute simple FB averages per pitcher name
+    _fb_pitches = df[df["PitchType"].isin(_fb_types)]
+    if "Pitcher" in df.columns and len(_fb_pitches) > 0:
+        _primary_fb = _fb_pitches.groupby(["Pitcher", "PitchType"]).size().reset_index(name="_cnt")
+        _primary_fb = _primary_fb.loc[_primary_fb.groupby("Pitcher")["_cnt"].idxmax()][["Pitcher", "PitchType"]].rename(columns={"PitchType": "primaryFB"})
+        df = df.merge(_primary_fb, on="Pitcher", how="left")
+        df["primaryFB"] = df["primaryFB"].fillna("Fastball")
+        _fb_shapes = (df[df["PitchType"] == df["primaryFB"]]
+                      .groupby("Pitcher")
+                      .agg(RelSpeedFBavg=("RelSpeed","mean"), InducedVertBreakFBavg=("InducedVertBreak","mean"), StandardizedHBFBavg=("StandardizedHB","mean"))
+                      .reset_index())
+        df = df.merge(_fb_shapes, on="Pitcher", how="left")
+        df["VeloDiff"] = df["RelSpeed"] - df["RelSpeedFBavg"]
+        df["IVBDiff"]  = df["InducedVertBreak"] - df["InducedVertBreakFBavg"]
+        df["HBDiff"]   = df["StandardizedHB"] - df["StandardizedHBFBavg"]
+    else:
+        for _c in ["primaryFB","VeloDiff","IVBDiff","HBDiff","RelSpeedFBavg","InducedVertBreakFBavg","StandardizedHBFBavg"]:
+            df[_c] = np.nan
+else:
+    for _c in ["primaryFB","VeloDiff","IVBDiff","HBDiff","RelSpeedFBavg","InducedVertBreakFBavg","StandardizedHBFBavg"]:
+        df[_c] = np.nan
+
 # Build pitcher list
 all_pitchers = sorted(df[df["PitcherTeam"] == "KEN_OWL"]["Pitcher"].dropna().unique().tolist())
 
@@ -1095,6 +1143,178 @@ def _predict_xslg(exit_speeds, launch_angles):
     except Exception as e:
         print(f"xSLG predict error: {e}")
         return None
+
+# ── Stuff+ / Location+ / Pitching+ models ────────────────────────────────────
+import joblib as _joblib
+import xgboost as _xgb
+
+_stuff_models = {}   # {model_name: model}  keys: 'fb','bb','os'
+_loc_models   = {}   # {(pitch_group, side): model}
+
+_STUFF_MODEL_PATHS = {
+    "fb": ["/Users/jab/R_Projects/stuff/FB_model.pkl",  "/Volumes/Projects/Models/FB_model.pkl",  "FB_model.pkl"],
+    "bb": ["/Users/jab/R_Projects/stuff/BB_model.pkl",  "/Volumes/Projects/Models/BB_model.pkl",  "BB_model.pkl"],
+    "os": ["/Users/jab/R_Projects/stuff/OS_model.pkl",  "/Volumes/Projects/Models/OS_model.pkl",  "OS_model.pkl"],
+}
+_LOC_MODEL_DIR_PATHS = ["/Users/jab/realstuff/loc_model", "/Volumes/Projects/Models/loc_model", "loc_model"]
+_PITCH_TYPE_MAPPING  = {
+    "Fastball":  ["Fastball"],
+    "Sinker":    ["Sinker"],
+    "Cutter":    ["Cutter"],
+    "Slider":    ["Slider"],
+    "Sweeper":   ["Sweeper"],
+    "Curveball": ["Curveball"],
+    "Changeup":  ["Changeup"],
+    "Splitter":  ["Splitter"],
+}
+
+for _key, _paths in _STUFF_MODEL_PATHS.items():
+    for _p in _paths:
+        if os.path.exists(_p):
+            try:
+                _stuff_models[_key] = _joblib.load(_p)
+                print(f"Stuff+ {_key} model loaded from {_p}")
+            except Exception as _e:
+                print(f"Stuff+ {_key} load error: {_e}")
+            break
+
+for _loc_dir in _LOC_MODEL_DIR_PATHS:
+    if os.path.isdir(_loc_dir):
+        for _pname in _PITCH_TYPE_MAPPING:
+            for _side in ["Left", "Right"]:
+                _mp = os.path.join(_loc_dir, f"location_model_{_pname}_{_side}.joblib")
+                if os.path.exists(_mp):
+                    try:
+                        _loc_models[(_pname, _side)] = _joblib.load(_mp)
+                    except Exception as _e:
+                        print(f"Loc model {_pname}/{_side} load error: {_e}")
+        break
+
+# Pre-compute reference distributions from full df for normalization
+_stuff_ref = {}
+try:
+    if _stuff_models and "PitchType" in df.columns:
+        _df_fb_ref = df[
+            (df["PitchType"].isin(["Fastball","Sinker"])) |
+            ((df["PitchType"] == "Cutter") & (df.get("primaryFB", pd.Series(dtype=str)) == "Cutter"))
+        ].copy()
+        _df_bb_ref = df[
+            (df["PitchType"].isin(["Curveball","Slider","Sweeper"])) |
+            ((df["PitchType"] == "Cutter") & (df.get("primaryFB", pd.Series(dtype=str)) != "Cutter"))
+        ].copy()
+        _df_os_ref = df[df["PitchType"].isin(["Changeup","Splitter"])].copy()
+        for _key, _ref_df in [("fb", _df_fb_ref), ("bb", _df_bb_ref), ("os", _df_os_ref)]:
+            _m = _stuff_models.get(_key)
+            if _m is not None and len(_ref_df) > 0:
+                _feat = _m.feature_names_in_
+                _clean = _ref_df.dropna(subset=_feat)
+                if len(_clean) > 0:
+                    _preds = _m.predict_proba(_clean[_feat])[:, 1]
+                    _stuff_ref[_key] = {"mean": _preds.mean(), "std": _preds.std()}
+except Exception as _e:
+    print(f"Stuff+ ref computation error: {_e}")
+
+
+def _predict_stuff_plus(data: "pd.DataFrame") -> "pd.DataFrame":
+    """Add stuff_plus column to a copy of data. Returns original rows with NaN if not computable."""
+    if not _stuff_models or data.empty:
+        out = data.copy(); out["stuff_plus"] = np.nan; return out
+    parts = []
+    _pf = data.get("primaryFB", pd.Series(["Fastball"]*len(data), index=data.index))
+    for _key, _mask_fn in [
+        ("fb", lambda d, pf: (d["PitchType"].isin(["Fastball","Sinker"])) | ((d["PitchType"]=="Cutter") & (pf=="Cutter"))),
+        ("bb", lambda d, pf: (d["PitchType"].isin(["Curveball","Slider","Sweeper"])) | ((d["PitchType"]=="Cutter") & (pf!="Cutter"))),
+        ("os", lambda d, pf: d["PitchType"].isin(["Changeup","Splitter"])),
+    ]:
+        _m = _stuff_models.get(_key)
+        _ref = _stuff_ref.get(_key)
+        if _m is None or _ref is None:
+            continue
+        _mask = _mask_fn(data, _pf)
+        _sub = data[_mask].dropna(subset=_m.feature_names_in_).copy()
+        if len(_sub) == 0:
+            continue
+        _xw = _m.predict_proba(_sub[_m.feature_names_in_])[:, 1]
+        _sub["stuff_plus"] = ((_xw - _ref["mean"]) / _ref["std"]) * 10 + 100
+        parts.append(_sub)
+    if not parts:
+        out = data.copy(); out["stuff_plus"] = np.nan; return out
+    _combined = pd.concat(parts)
+    out = data.copy()
+    out["stuff_plus"] = np.nan
+    out.loc[_combined.index, "stuff_plus"] = _combined["stuff_plus"]
+    return out
+
+
+def _predict_location_plus(data: "pd.DataFrame") -> "pd.DataFrame":
+    """Add location_plus column. Uses pitch-group × batter-side location models."""
+    if not _loc_models or data.empty:
+        out = data.copy(); out["location_plus"] = np.nan; return out
+    results = []
+    for _pname, _pitch_types in _PITCH_TYPE_MAPPING.items():
+        _pdata = data[data["PitchType"].isin(_pitch_types)].dropna(
+            subset=["PlateLocHeight","PlateLocSide","BatterSide"]).copy()
+        for _side in ["Left","Right"]:
+            _lm = _loc_models.get((_pname, _side))
+            if _lm is None:
+                continue
+            _sd = _pdata[_pdata["BatterSide"]==_side].copy()
+            if len(_sd) == 0:
+                continue
+            _X = _sd[["PlateLocHeight","PlateLocSide"]].values
+            _sd["_pred_whiff"] = _lm.predict(_xgb.DMatrix(_X))
+            results.append(_sd)
+    if not results:
+        out = data.copy(); out["location_plus"] = np.nan; return out
+    _comb = pd.concat(results, ignore_index=True)
+    _lmean = _comb["_pred_whiff"].mean()
+    _lstd  = _comb["_pred_whiff"].std()
+    _comb["location_plus"] = ((_comb["_pred_whiff"] - _lmean) / _lstd) * 10 + 100 if _lstd > 0 else 100.0
+    out = data.copy()
+    out["location_plus"] = np.nan
+    # merge back by index; _comb may not share index with data, re-merge on key cols
+    _key_cols = ["Pitcher","Date","PitchNo"] if all(c in data.columns for c in ["Pitcher","Date","PitchNo"]) else None
+    if _key_cols:
+        _comb2 = _comb[_key_cols + ["location_plus"]].drop_duplicates(subset=_key_cols)
+        out = out.merge(_comb2, on=_key_cols, how="left", suffixes=("","_new"))
+        if "location_plus_new" in out.columns:
+            out["location_plus"] = out["location_plus_new"].fillna(out["location_plus"])
+            out = out.drop(columns=["location_plus_new"])
+    return out
+
+
+def _compute_plus_by_pitch(data: "pd.DataFrame") -> "pd.DataFrame":
+    """Return df with stuff_plus, location_plus, pitching_plus per row."""
+    d = _predict_stuff_plus(data)
+    d = _predict_location_plus(d)
+    d["pitching_plus"] = d["stuff_plus"] * 0.65 + d["location_plus"].fillna(100) * 0.35
+    return d
+
+
+def _plus_color(value) -> str:
+    """Blue→#5e5757→red gradient for plus stats centred at 100."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return "background-color: #2c2c2c; color: #E8E8E8;"
+    lo, mid, hi = 70.0, 100.0, 130.0
+    v = max(lo, min(hi, v))
+    if v <= mid:
+        t = (v - lo) / (mid - lo)
+        r = int(0   + (94  - 0)   * t)
+        g = int(123 + (87  - 123) * t)
+        b = int(255 + (87  - 255) * t)
+        text = "#E8E8E8" if t > 0.4 else "white"
+        fw = "bold" if t < 0.25 else "normal"
+    else:
+        t = (v - mid) / (hi - mid)
+        r = int(94  + (220 - 94)  * t)
+        g = int(87  + (53  - 87)  * t)
+        b = int(87  + (69  - 87)  * t)
+        text = "#E8E8E8" if t < 0.6 else "white"
+        fw = "normal" if t < 0.75 else "bold"
+    return f"background-color: rgb({r},{g},{b}); color: {text}; font-weight: {fw};"
+
 
 # ── Savant-style horizontal bar chart ─────────────────────────────────────────
 def _bar_color(pct: int, lower_is_better: bool) -> str:
@@ -2056,6 +2276,28 @@ def server(input, output, session):
             metrics["ArmAngle"] = (90 - grouped["arm_angle"].mean()).round(1)
 
         metrics["MaxVelo"] = grouped["RelSpeed"].max().round(1)
+
+        # ── Stuff+ / Location+ / Pitching+ per pitch type ──────────────────
+        try:
+            _plus_data = _compute_plus_by_pitch(data)
+            for _pcol, _src in [("Stuff+","stuff_plus"),("Location+","location_plus"),("Pitching+","pitching_plus")]:
+                if _src in _plus_data.columns:
+                    _agg = _plus_data.groupby("PitchType")[_src].agg(
+                        mean="mean", min="min", max="max", std="std"
+                    ).round(1)
+                    metrics[_pcol] = _agg["mean"].reindex(metrics.index)
+                    metrics[f"{_pcol}_min"] = _agg["min"].reindex(metrics.index)
+                    metrics[f"{_pcol}_max"] = _agg["max"].reindex(metrics.index)
+                    metrics[f"{_pcol}_sd"]  = _agg["std"].reindex(metrics.index)
+                else:
+                    for _sfx in ["", "_min", "_max", "_sd"]:
+                        metrics[f"{_pcol}{_sfx}"] = np.nan
+        except Exception as _pe:
+            print(f"Plus metrics error: {_pe}")
+            for _pcol in ["Stuff+","Location+","Pitching+"]:
+                for _sfx in ["","_min","_max","_sd"]:
+                    metrics[f"{_pcol}{_sfx}"] = np.nan
+
         usage_percentage = data["PitchType"].value_counts(normalize=True) * 100
         metrics["Usage%"] = usage_percentage.reindex(metrics.index, fill_value=0.0).round(1)
         pitch_counts = data["PitchType"].value_counts()
@@ -2075,17 +2317,27 @@ def server(input, output, session):
             column_order.append("Tilt")
 
         column_order.extend(["RelHeight", "RelSide", "VAA", "HAA", "Extension"])
+        # Plus stat cols — add mean display cols; keep min/max/sd in metrics but not in column_order (used for tooltip)
+        for _pcol in ["Stuff+", "Location+", "Pitching+"]:
+            if _pcol in metrics.columns:
+                column_order.append(_pcol)
 
         if "ArmAngle" in metrics.columns:
             column_order.insert(-3, "ArmAngle")
 
-        metrics = metrics[column_order].fillna(0)
+        # Keep plus cols as NaN when missing; fill 0 only for core numeric cols
+        _plus_display_cols = [c for c in ["Stuff+","Location+","Pitching+"] if c in column_order]
+        _core_cols = [c for c in column_order if c not in _plus_display_cols]
+        metrics[_core_cols] = metrics[_core_cols].fillna(0)
 
         # Add TOTAL row
         total_row = {'PitchType': 'TOTAL', 'Count': metrics['Count'].sum(), 'Usage%': 100.0}
 
         # Calculate weighted averages for all numeric columns
         base_cols = ['Vel', 'MaxVelo', 'IVB', 'HB', 'SpinRate', 'RelHeight', 'RelSide', 'VAA', 'HAA', 'Extension']
+        for _pcol in ['Stuff+', 'Location+', 'Pitching+']:
+            if _pcol in metrics.columns:
+                base_cols.append(_pcol)
         if "Tilt" in metrics.columns:
             base_cols.insert(5, 'Tilt')  # Insert after SpinRate
 
@@ -2104,17 +2356,21 @@ def server(input, output, session):
         total_df = pd.DataFrame([total_row])
         metrics = pd.concat([metrics, total_df], ignore_index=True)
 
-        # Create HTML table
+        # Create HTML table — iterate only display columns; aux cols (_min/_max/_sd) available via row.get()
+        _aux_sfx = ["_min","_max","_sd"]
+        _aux_cols = [c for c in metrics.columns if any(c.endswith(s) for s in _aux_sfx)]
+        _display_cols = [c for c in metrics.columns if c not in _aux_cols]
         table_id = "metrics_table_" + str(hash(display_name) % 10000)
         html = f'<table id="{table_id}" style="border-collapse: collapse; width: 100%; font-size: 14px;">'
         html += '<thead><tr>'
-        for col in metrics.columns:
+        for col in _display_cols:
             html += f'<th style="border: 1px solid #ddd; padding: 8px; background-color: #f8f9fa;">{col}</th>'
         html += '</tr></thead><tbody>'
 
         for _, row in metrics.iterrows():
             html += '<tr>'
-            for col, value in row.items():
+            for col in _display_cols:
+                value = row[col]
                 if col == 'PitchType':
                     if value == 'TOTAL':
                         html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: #2c2c2c; color: #E8E8E8; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
@@ -2122,17 +2378,38 @@ def server(input, output, session):
                         color = pitch_colors_dict.get(value, "#9C8975")
                         html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: {color}; color: white; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
                 elif col in ['Vel', 'Extension'] and value != 0:
-                    # Color performance metrics (including TOTAL row)
                     style = get_performance_color(value, row['PitchType'], col)
-                    formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(
-                        value) else str(value)
+                    formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(value) else str(value)
                     if row['PitchType'] == 'TOTAL':
                         html += f'<td style="border: 1px solid #2c2c2c; padding: 8px; text-align: center; font-weight: bold; {style}">{formatted_value}</td>'
                     else:
                         html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; {style}">{formatted_value}</td>'
+                elif col in ['Stuff+', 'Location+', 'Pitching+']:
+                    is_total = row['PitchType'] == 'TOTAL'
+                    is_nan = pd.isna(value)
+                    if is_nan:
+                        disp = '—'
+                        style = 'background-color: #2c2c2c; color: #E8E8E8;'
+                    else:
+                        disp = f"{value:.1f}"
+                        style = _plus_color(value)
+                    # Build tooltip with min/max/sd if available and not TOTAL
+                    tooltip = ''
+                    if not is_total and not is_nan:
+                        _mn  = row.get(f'{col}_min', np.nan)
+                        _mx  = row.get(f'{col}_max', np.nan)
+                        _sd  = row.get(f'{col}_sd',  np.nan)
+                        parts_tt = []
+                        if not pd.isna(_mn):  parts_tt.append(f'Min: {_mn:.1f}')
+                        if not pd.isna(_mx):  parts_tt.append(f'Max: {_mx:.1f}')
+                        if not pd.isna(_sd):  parts_tt.append(f'SD: {_sd:.1f}')
+                        if parts_tt:
+                            tooltip = f' title="{" | ".join(parts_tt)}" style="cursor:help;"'
+                    border = '#2c2c2c' if is_total else '#ddd'
+                    fw = 'bold' if is_total else 'normal'
+                    html += f'<td{tooltip} style="border: 1px solid {border}; padding: 8px; text-align: center; font-weight: {fw}; {style}">{disp}</td>'
                 else:
-                    formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(
-                        value) else str(value)
+                    formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(value) else str(value)
                     if row['PitchType'] == 'TOTAL':
                         html += f'<td style="border: 1px solid #2c2c2c; padding: 8px; text-align: center; font-weight: bold; background-color: #2c2c2c; color: #E8E8E8;">{formatted_value}</td>'
                     else:
@@ -3309,6 +3586,15 @@ def server(input, output, session):
             if col in data.columns:
                 data[col] = pd.to_numeric(data[col], errors="coerce")
 
+        # Compute plus metrics for entire filtered dataset once
+        try:
+            _plus_lb = _compute_plus_by_pitch(data)
+        except Exception as _pe:
+            print(f"Leaderboard plus error: {_pe}")
+            _plus_lb = data.copy()
+            for _c in ["stuff_plus","location_plus","pitching_plus"]:
+                _plus_lb[_c] = np.nan
+
         # Calculate metrics for each pitcher
         pitcher_metrics = []
 
@@ -3355,6 +3641,14 @@ def server(input, output, session):
                 total_pitches = len(data[data["Pitcher"] == pitcher_name])
                 metrics["Usage%"] = (len(pitcher_data) / total_pitches * 100) if total_pitches > 0 else 0.0
 
+            # Plus metrics — mean over this pitcher's pitches
+            for _pcol, _src in [("Stuff+","stuff_plus"),("Location+","location_plus"),("Pitching+","pitching_plus")]:
+                if _src in _plus_lb.columns:
+                    _pvals = _plus_lb.loc[_plus_lb["Pitcher"]==pitcher_name, _src].dropna()
+                    metrics[_pcol] = round(float(_pvals.mean()), 1) if len(_pvals) > 0 else np.nan
+                else:
+                    metrics[_pcol] = np.nan
+
             pitcher_metrics.append(metrics)
 
         if not pitcher_metrics:
@@ -3384,6 +3678,10 @@ def server(input, output, session):
         if "ArmAngle" in pitcher_metrics_df.columns:
             column_order.insert(-3, "ArmAngle")
 
+        for _pcol in ["Stuff+", "Location+", "Pitching+"]:
+            if _pcol in pitcher_metrics_df.columns:
+                column_order.append(_pcol)
+
         # Select and order columns
         available_cols = [col for col in column_order if col in pitcher_metrics_df.columns]
         pitcher_metrics_df = pitcher_metrics_df[available_cols]
@@ -3404,26 +3702,34 @@ def server(input, output, session):
         pitcher_metrics_df = pitcher_metrics_df.sort_values("Vel", ascending=False)
 
         # Create HTML table
+        _lb_aux_sfx = ["_min","_max","_sd"]
+        _lb_aux_cols = [c for c in pitcher_metrics_df.columns if any(c.endswith(s) for s in _lb_aux_sfx)]
+        _lb_display_cols = [c for c in pitcher_metrics_df.columns if c not in _lb_aux_cols]
         table_id = "leaderboard_metrics_table_" + str(hash(pitch_type_filter) % 10000)
         html = f'<table id="{table_id}" style="border-collapse: collapse; width: 100%; font-size: 14px;">'
         html += '<thead><tr>'
-        for col in pitcher_metrics_df.columns:
+        for col in _lb_display_cols:
             html += f'<th style="border: 1px solid #ddd; padding: 8px; background-color: #f8f9fa;">{col}</th>'
         html += '</tr></thead><tbody>'
 
         for _, row in pitcher_metrics_df.iterrows():
             html += '<tr>'
-            for col, value in row.items():
+            for col in _lb_display_cols:
+                value = row[col]
                 if col == 'Pitcher':
                     html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: left; font-weight: bold;">{value}</td>'
                 elif col in ['Vel', 'Extension'] and value != 0:
                     style = get_performance_color(value, pitch_type_display, col)
-                    formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(
-                        value) else str(value)
+                    formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(value) else str(value)
                     html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; {style}">{formatted_value}</td>'
+                elif col in ['Stuff+', 'Location+', 'Pitching+']:
+                    if pd.isna(value):
+                        html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; background-color: #2c2c2c; color: #E8E8E8;">—</td>'
+                    else:
+                        style = _plus_color(value)
+                        html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; {style}">{value:.1f}</td>'
                 else:
-                    formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(
-                        value) else str(value)
+                    formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(value) else str(value)
                     html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{formatted_value}</td>'
             html += '</tr>'
 
