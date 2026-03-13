@@ -1257,6 +1257,177 @@ def make_savant_bars_html(row, title: str) -> str:
     return "".join(parts)
 
 
+def make_mirrored_bars_html(lhh_row, rhh_row, title: str) -> str:
+    """
+    Butterfly / mirrored percentile chart.
+    LHH bars grow LEFT from center, RHH bars grow RIGHT from center.
+    Stat labels in the center column.  Raw values at the outer edges.
+    """
+    COLS = list(_PITCHING_PLUS_COLS.items())
+
+    # ── Layout ───────────────────────────────────────────────────────────────
+    W         = 900          # total SVG width
+    VAL_W     = 52           # width reserved for raw value on each outer edge
+    LBL_W     = 70           # center label column width
+    BAR_AREA  = (W - LBL_W - 2 * VAL_W) // 2   # bar area per side
+    LEFT_BAR_END  = VAL_W + BAR_AREA             # x where LHH bar ends (center-left edge)
+    CENTER_X      = VAL_W + BAR_AREA + LBL_W // 2  # middle of label col
+    RIGHT_BAR_START = VAL_W + BAR_AREA + LBL_W  # x where RHH bar starts
+
+    ROW_H    = 34
+    BAR_H    = 16
+    HEADER_H = 52
+    FOOTER_H = 28
+    n        = len(COLS)
+    total_h  = HEADER_H + n * ROW_H + FOOTER_H
+
+    def lhh_bar_x(pct):
+        """Left edge of LHH filled bar (bars grow leftward from LEFT_BAR_END)."""
+        return LEFT_BAR_END - (pct / 100) * BAR_AREA
+
+    parts = []
+    parts.append(
+        f'<div style="width:100%;overflow-x:auto;background:#1A1A1A;border-radius:6px;padding:4px 0;">' 
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {total_h}" '
+        f'style="width:100%;max-width:{W}px;display:block;margin:0 auto;font-family:Barlow,Barlow Condensed,sans-serif;">'
+    )
+
+    # ── Title ────────────────────────────────────────────────────────────────
+    parts.append(
+        f'<text x="{W/2}" y="20" text-anchor="middle" '
+        f'font-family="Barlow Condensed,sans-serif" font-size="14" font-weight="700" '
+        f'fill="#FDBB30" letter-spacing="1">{title} — Percentile Rankings (vs D1)</text>'
+    )
+
+    # ── LHH / RHH side labels ─────────────────────────────────────────────────
+    parts.append(
+        f'<text x="{VAL_W + BAR_AREA // 2}" y="38" text-anchor="middle" '
+        f'font-family="Barlow Condensed,sans-serif" font-size="11" font-weight="700" fill="#6B9EC8">'
+        f'VS LHH ←</text>'
+    )
+    parts.append(
+        f'<text x="{RIGHT_BAR_START + BAR_AREA // 2}" y="38" text-anchor="middle" '
+        f'font-family="Barlow Condensed,sans-serif" font-size="11" font-weight="700" fill="#C84040">'
+        f'→ VS RHH</text>'
+    )
+
+    # ── Guideline percentiles (20 / 50 / 80) on each side ────────────────────
+    for pct_pos in [20, 50, 80]:
+        # LHH side (grows left): x = LEFT_BAR_END - pct * BAR_AREA/100
+        lx = LEFT_BAR_END - (pct_pos / 100) * BAR_AREA
+        rx = RIGHT_BAR_START + (pct_pos / 100) * BAR_AREA
+        for gx in [lx, rx]:
+            parts.append(
+                f'<line x1="{gx:.1f}" y1="{HEADER_H}" x2="{gx:.1f}" y2="{HEADER_H + n * ROW_H}" '
+                f'stroke="#333" stroke-width="1" stroke-dasharray="3,3"/>'
+            )
+
+    # ── Rows ─────────────────────────────────────────────────────────────────
+    for i, (csv_col, (label, lower_is_better, *_)) in enumerate(COLS):
+        y_top  = HEADER_H + i * ROW_H
+        bar_cy = y_top + ROW_H / 2
+        bar_y  = bar_cy - BAR_H / 2
+
+        # Parse both sides
+        if lhh_row is not None and csv_col in lhh_row.index:
+            lhh_val_str, lhh_pct = _parse_pct_value(lhh_row[csv_col])
+        else:
+            lhh_val_str, lhh_pct = None, None
+
+        if rhh_row is not None and csv_col in rhh_row.index:
+            rhh_val_str, rhh_pct = _parse_pct_value(rhh_row[csv_col])
+        else:
+            rhh_val_str, rhh_pct = None, None
+
+        # Alternating row bg
+        if i % 2 == 0:
+            parts.append(
+                f'<rect x="0" y="{y_top}" width="{W}" height="{ROW_H}" fill="#1E1E1E" rx="0"/>'
+            )
+
+        # ── Center stat label ───────────────────────────────────────────────
+        parts.append(
+            f'<text x="{CENTER_X}" y="{bar_cy + 5}" text-anchor="middle" '
+            f'font-family="Barlow,sans-serif" font-size="11" font-weight="600" fill="#CCCCCC">'
+            f'{label}</text>'
+        )
+
+        # ── LHH background track (grows left) ──────────────────────────────
+        parts.append(
+            f'<rect x="{VAL_W}" y="{bar_y}" width="{BAR_AREA}" height="{BAR_H}" fill="#2C2C2C" rx="3"/>'
+        )
+
+        # ── RHH background track (grows right) ─────────────────────────────
+        parts.append(
+            f'<rect x="{RIGHT_BAR_START}" y="{bar_y}" width="{BAR_AREA}" height="{BAR_H}" fill="#2C2C2C" rx="3"/>'
+        )
+
+        # ── LHH filled bar + bubble + value ────────────────────────────────
+        if lhh_pct is not None:
+            color      = _bar_color(lhh_pct, lower_is_better)
+            fill_w     = (lhh_pct / 100) * BAR_AREA
+            bar_left   = LEFT_BAR_END - fill_w
+            bubble_cx  = bar_left
+            bubble_r   = 11
+            parts.append(
+                f'<rect x="{bar_left:.1f}" y="{bar_y}" width="{fill_w:.1f}" height="{BAR_H}" fill="{color}" rx="3"/>'
+            )
+            parts.append(
+                f'<circle cx="{bubble_cx:.1f}" cy="{bar_cy:.1f}" r="{bubble_r}" fill="{color}"/>'
+            )
+            font_sz = "10" if lhh_pct >= 100 else "11"
+            parts.append(
+                f'<text x="{bubble_cx:.1f}" y="{bar_cy + 4:.1f}" text-anchor="middle" '
+                f'font-family="Barlow Condensed,sans-serif" font-size="{font_sz}" font-weight="700" fill="white">'
+                f'{lhh_pct}</text>'
+            )
+        lhh_display = lhh_val_str if lhh_val_str else "—"
+        parts.append(
+            f'<text x="{VAL_W - 4}" y="{bar_cy + 5}" text-anchor="end" '
+            f'font-family="Barlow Condensed,sans-serif" font-size="11" font-weight="600" fill="#DDDDDD">'
+            f'{lhh_display}</text>'
+        )
+
+        # ── RHH filled bar + bubble + value ────────────────────────────────
+        if rhh_pct is not None:
+            color     = _bar_color(rhh_pct, lower_is_better)
+            fill_w    = (rhh_pct / 100) * BAR_AREA
+            bubble_cx = RIGHT_BAR_START + fill_w
+            bubble_r  = 11
+            parts.append(
+                f'<rect x="{RIGHT_BAR_START}" y="{bar_y}" width="{fill_w:.1f}" height="{BAR_H}" fill="{color}" rx="3"/>'
+            )
+            parts.append(
+                f'<circle cx="{bubble_cx:.1f}" cy="{bar_cy:.1f}" r="{bubble_r}" fill="{color}"/>'
+            )
+            font_sz = "10" if rhh_pct >= 100 else "11"
+            parts.append(
+                f'<text x="{bubble_cx:.1f}" y="{bar_cy + 4:.1f}" text-anchor="middle" '
+                f'font-family="Barlow Condensed,sans-serif" font-size="{font_sz}" font-weight="700" fill="white">'
+                f'{rhh_pct}</text>'
+            )
+        rhh_display = rhh_val_str if rhh_val_str else "—"
+        parts.append(
+            f'<text x="{W - VAL_W + 4}" y="{bar_cy + 5}" text-anchor="start" '
+            f'font-family="Barlow Condensed,sans-serif" font-size="11" font-weight="600" fill="#DDDDDD">'
+            f'{rhh_display}</text>'
+        )
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    fy = HEADER_H + n * ROW_H + 16
+    parts.append(
+        f'<line x1="{VAL_W}" y1="{fy}" x2="{W - VAL_W}" y2="{fy}" stroke="#3A3A3A" stroke-width="1"/>'
+    )
+    parts.append(
+        f'<text x="{W/2}" y="{fy + 12}" text-anchor="middle" '
+        f'font-family="Barlow,sans-serif" font-size="9" fill="#666">'
+        f'Percentiles vs D1 pitchers | pitching+ data</text>'
+    )
+
+    parts.append("</svg></div>")
+    return "".join(parts)
+
+
 KSU_CSS = """
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <style>
@@ -3674,36 +3845,19 @@ def server(input, output, session):
             lhh_data = filtered_data_lhh()
             rhh_data = filtered_data_rhh()
 
-            lhh_html_raw = create_summary_stats_table(
-                override_data=lhh_data,
-                override_title=f"{base_title} vs LHH ({len(lhh_data)} pitches)"
-            )
-            rhh_html_raw = create_summary_stats_table(
-                override_data=rhh_data,
-                override_title=f"{base_title} vs RHH ({len(rhh_data)} pitches)"
-            )
+            # Build savant rows for each split
+            lhh_stats = compute_savant_stats(lhh_data) if not lhh_data.empty else {}
+            rhh_stats = compute_savant_stats(rhh_data) if not rhh_data.empty else {}
+            lhh_row = make_savant_row_from_stats(lhh_stats)
+            rhh_row = make_savant_row_from_stats(rhh_stats)
 
-            # Extract the HTML string from ui.HTML objects
-            lhh_str = lhh_html_raw.get_html_string() if hasattr(lhh_html_raw, 'get_html_string') else str(lhh_html_raw)
-            rhh_str = rhh_html_raw.get_html_string() if hasattr(rhh_html_raw, 'get_html_string') else str(rhh_html_raw)
-
-            combined = ui.div(
-                ui.row(
-                    ui.column(6,
-                        ui.div(
-                            ui.HTML('<div style="text-align:center;color:#6B9EC8;font-family:Barlow Condensed,sans-serif;font-size:0.8rem;font-weight:700;letter-spacing:0.1em;padding:4px 0 6px;">VS LEFT-HANDED BATTERS</div>'),
-                            lhh_html_raw,
-                        )
-                    ),
-                    ui.column(6,
-                        ui.div(
-                            ui.HTML('<div style="text-align:center;color:#C84040;font-family:Barlow Condensed,sans-serif;font-size:0.8rem;font-weight:700;letter-spacing:0.1em;padding:4px 0 6px;">VS RIGHT-HANDED BATTERS</div>'),
-                            rhh_html_raw,
-                        )
-                    ),
-                ),
+            n_lhh = len(lhh_data)
+            n_rhh = len(rhh_data)
+            mirrored_html = make_mirrored_bars_html(
+                lhh_row, rhh_row,
+                f"{base_title} (LHH: {n_lhh} | RHH: {n_rhh})"
             )
-            return combined
+            return ui.HTML(mirrored_html)
         else:
             return create_summary_stats_table()
     @output
