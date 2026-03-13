@@ -361,6 +361,75 @@ if "Date" in df.columns:
 # Build pitcher list
 all_pitchers = sorted(df[df["PitcherTeam"] == "KEN_OWL"]["Pitcher"].dropna().unique().tolist())
 
+# ── Load pitching+ percentile CSV ────────────────────────────────────────────
+def _load_pitching_plus_csv():
+    paths = [
+        "pitching_.csv",
+        os.path.join(os.path.dirname(__file__), "pitching_.csv"),
+    ]
+    for p in paths:
+        if os.path.exists(p):
+            try:
+                with open(p) as f:
+                    content = f.read()
+                # CSV has two header blocks separated by a blank line; use the second
+                blocks = [b.strip() for b in content.split("\n\n") if b.strip()]
+                target = blocks[1] if len(blocks) > 1 else blocks[0]
+                return pd.read_csv(io.StringIO(target))
+            except Exception as e:
+                print(f"pitching_.csv load error: {e}")
+    print("pitching_.csv not found — percentile circles will be skipped.")
+    return pd.DataFrame()
+
+_pitching_plus_df = _load_pitching_plus_csv()
+
+# CSV stat col → display label + lower_is_better flag
+_PITCHING_PLUS_COLS = {
+    "wOBA":        ("wOBA",          True),
+    "xWOBA":       ("xwOBA",         True),
+    "K%":          ("K%",            False),
+    "BB%":         ("BB%",           True),
+    "Miss%":       ("Whiff%",        False),
+    "CSW%":        ("CSW%",          False),
+    "Chase%":      ("O-Swing%",      False),
+    "Swing%":      ("Swing%",        False),
+    "iZ-Contact%": ("Z-Contact%",    True),
+    "vFB":         ("Fastball Velo", False),
+    "Barrel%":     ("Barrel%",       True),
+    "HardHit%":    ("HardHit%",      True),
+    "ExitVel":     ("AverageEV",     True),
+    "AdjGB%":      ("GB%",           False),
+    "SwStrk%":     ("SwStr%",        False),
+}
+
+def _parse_pct_value(s):
+    """Parse '23.0% (88%)' → (value_str, percentile_int) or (None, None)."""
+    if pd.isna(s) or str(s).strip() == "":
+        return None, None
+    s = str(s).strip()
+    if "(" in s and ")" in s:
+        val_part = s.split("(")[0].strip().rstrip("%").strip()
+        pct_part = s.split("(")[1].split(")")[0].strip().rstrip("%").strip()
+        try:
+            return val_part, int(float(pct_part))
+        except:
+            return val_part, None
+    return s.rstrip("%").strip(), None
+
+def get_pitching_plus_row(pitcher_name: str):
+    """Return the pitching+ row for a pitcher by full name match, or None."""
+    if _pitching_plus_df.empty or not pitcher_name:
+        return None
+    # Try exact playerFullName match first
+    match = _pitching_plus_df[_pitching_plus_df["playerFullName"].str.lower() == pitcher_name.lower()]
+    if match.empty:
+        # Try last name only
+        last = pitcher_name.split()[-1].lower()
+        match = _pitching_plus_df[_pitching_plus_df["player"].str.lower() == last]
+    if not match.empty:
+        return match.iloc[0]
+    return None
+
 # Date ranges
 if "Date" in df.columns and not df["Date"].isna().all():
     min_date = df["Date"].min().date()
@@ -751,6 +820,144 @@ def simple_kde(data, x_range, bandwidth=None):
 
     density = density / (len(data) * bandwidth * np.sqrt(2 * np.pi))
     return density
+
+def _pct_to_color(pct: int, lower_is_better: bool) -> str:
+    """Return fill color matching Savant-style: blue=bad, white=mid, red=good."""
+    # Adjust so that 'good' always maps to red
+    effective = (100 - pct) if lower_is_better else pct
+    effective = max(0, min(100, effective))
+    if effective < 50:
+        t = effective / 50.0          # 0→1
+        r = int(30  + (230 - 30)  * t)
+        g = int(100 + (230 - 100) * t)
+        b = int(200 + (230 - 200) * t)
+    else:
+        t = (effective - 50) / 50.0   # 0→1
+        r = int(230 + (188 - 230) * t)
+        g = int(230 + (0   - 230) * t)
+        b = int(230 + (0   - 230) * t)
+    return f"rgb({r},{g},{b})"
+
+def _arc_path(cx, cy, r, pct):
+    """SVG arc path for a filled circle showing 0–pct% of the arc (clockwise from top)."""
+    if pct <= 0:
+        return ""
+    if pct >= 100:
+        # Full circle as two arcs
+        return (f"M {cx},{cy-r} A {r},{r} 0 1,1 {cx-0.001},{cy-r} Z")
+    angle = (pct / 100) * 360
+    rad = np.radians(angle - 90)
+    x = cx + r * np.cos(rad)
+    y = cy + r * np.sin(rad)
+    large = 1 if angle > 180 else 0
+    return f"M {cx},{cy} L {cx},{cy-r} A {r},{r} 0 {large},1 {x:.3f},{y:.3f} Z"
+
+def make_savant_circles_html(row, title: str) -> str:
+    """
+    Build a Savant-style percentile circle grid from a pitching+ CSV row.
+    Returns raw HTML string.
+    """
+    COLS = list(_PITCHING_PLUS_COLS.items())   # [(csv_col, (label, lower_is_better)), ...]
+    n = len(COLS)
+
+    # ── layout ──────────────────────────────────────────────────
+    per_row    = 5
+    cell_w     = 110
+    cell_h     = 100
+    r_outer    = 34
+    r_inner    = 24
+    cols_count = per_row
+    rows_count = int(np.ceil(n / per_row))
+    total_w    = cols_count * cell_w
+    total_h    = rows_count * cell_h + 36   # +36 for title bar
+
+    parts = []
+    parts.append(
+        f'<div style="width:100%;overflow-x:auto;">'
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {total_w} {total_h}" '
+        f'style="width:100%;max-width:{total_w}px;display:block;margin:0 auto;background:#1A1A1A;">'
+    )
+
+    # Title bar
+    parts.append(
+        f'<text x="{total_w/2}" y="24" text-anchor="middle" '
+        f'font-family="Barlow Condensed,sans-serif" font-size="15" font-weight="700" '
+        f'fill="#FDBB30" letter-spacing="1">{title} — Percentile Rankings (vs D1)</text>'
+    )
+
+    for i, (csv_col, (label, lower_is_better)) in enumerate(COLS):
+        col_i = i % per_row
+        row_i = i // per_row
+        cx = col_i * cell_w + cell_w // 2
+        cy = row_i * cell_h + cell_h // 2 + 36
+
+        if row is not None and csv_col in row.index:
+            val_str, pct = _parse_pct_value(row[csv_col])
+        else:
+            val_str, pct = None, None
+
+        # background donut ring (dark grey)
+        parts.append(
+            f'<circle cx="{cx}" cy="{cy}" r="{r_outer}" '
+            f'fill="none" stroke="#3A3A3A" stroke-width="{r_outer - r_inner}"/>'
+        )
+
+        if pct is not None:
+            color = _pct_to_color(pct, lower_is_better)
+            arc   = _arc_path(cx, cy, (r_outer + r_inner) / 2, pct)
+            stroke_w = r_outer - r_inner
+            # Draw arc as thick stroked path (donut segment)
+            # Use clip-circle approach: draw full-colored circle, mask with arc
+            # Simpler: draw arc as stroke on mid-radius
+            mid_r = (r_outer + r_inner) / 2
+            if pct >= 100:
+                parts.append(
+                    f'<circle cx="{cx}" cy="{cy}" r="{mid_r:.1f}" '
+                    f'fill="none" stroke="{color}" stroke-width="{stroke_w}"/>'
+                )
+            else:
+                angle_deg = (pct / 100) * 360
+                circ = 2 * np.pi * mid_r
+                dash = (pct / 100) * circ
+                gap  = circ - dash
+                # rotate so arc starts at top (−90°)
+                parts.append(
+                    f'<circle cx="{cx}" cy="{cy}" r="{mid_r:.1f}" '
+                    f'fill="none" stroke="{color}" stroke-width="{stroke_w}" '
+                    f'stroke-dasharray="{dash:.2f} {gap:.2f}" '
+                    f'stroke-dashoffset="{circ/4:.2f}" '
+                    f'transform="rotate(-90 {cx} {cy})"/>'
+                )
+            # percentile number inside
+            parts.append(
+                f'<text x="{cx}" y="{cy+5}" text-anchor="middle" '
+                f'font-family="Barlow Condensed,sans-serif" font-size="14" font-weight="700" '
+                f'fill="#FFFFFF">{pct}</text>'
+            )
+        else:
+            parts.append(
+                f'<text x="{cx}" y="{cy+5}" text-anchor="middle" '
+                f'font-family="Barlow Condensed,sans-serif" font-size="11" '
+                f'fill="#888">N/A</text>'
+            )
+
+        # stat value below circle
+        display_val = val_str if val_str else "—"
+        parts.append(
+            f'<text x="{cx}" y="{cy + r_outer + 13}" text-anchor="middle" '
+            f'font-family="Barlow,sans-serif" font-size="10" fill="#BBBBBB">{display_val}</text>'
+        )
+        # label below value
+        parts.append(
+            f'<text x="{cx}" y="{cy + r_outer + 24}" text-anchor="middle" '
+            f'font-family="Barlow Condensed,sans-serif" font-size="10" font-weight="600" '
+            f'fill="#FDBB30" letter-spacing="0.5">{label}</text>'
+        )
+
+    parts.append("</svg></div>")
+    return "".join(parts)
+
 
 KSU_CSS = """
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
@@ -1590,32 +1797,48 @@ def server(input, output, session):
         else:
             summary["wOBA"] = 0.0
 
-        # Create HTML table
+        # ── Savant-style percentile circles ─────────────────────────────────
+        if not view_mode:
+            pp_row     = get_pitching_plus_row(display_name)
+            circle_title = display_name
+        else:
+            # Team view: no single-pitcher row — skip circles
+            pp_row     = None
+            circle_title = "KEN_OWL Team"
+
+        circles_html = make_savant_circles_html(pp_row, circle_title)
+
+        # ── Traditional summary table (kept below circles) ─────────────────
         table_id = "summary_stats_table_" + str(hash(display_name) % 10000)
 
-        # Add header with context
-        header_text = f"{display_name} Summary Stats"
+        header_text = f"{display_name} — Computed Stats (TrackMan)"
         if view_mode:
             num_pitchers = data['Pitcher'].nunique() if 'Pitcher' in data.columns else 0
-            header_text = f"KEN_OWL Team Summary Stats ({num_pitchers} Pitchers)"
+            header_text = f"KEN_OWL Team Stats ({num_pitchers} Pitchers)"
 
-        html = f'<div style="margin-bottom: 10px; font-weight: bold; font-size: 14px; color: #333;">{header_text}</div>'
-        html += f'<table id="{table_id}" style="border-collapse: collapse; width: 100%; font-size: 14px;">'
+        html  = circles_html
+        html += f'<div style="margin:12px 0 6px 0;font-family:\'Barlow Condensed\',sans-serif;font-size:13px;font-weight:700;color:#FDBB30;letter-spacing:1px;text-transform:uppercase;">{header_text}</div>'
+        html += f'<table id="{table_id}" style="border-collapse:collapse;width:100%;font-size:13px;">'
         html += '<thead><tr>'
         for col in summary.keys():
-            html += f'<th style="border: 1px solid #ddd; padding: 8px; background-color: #f8f9fa;">{col}</th>'
+            html += (
+                f'<th style="border:1px solid #3A3A3A;padding:6px 10px;'
+                f'background-color:#2C2C2C;color:#FDBB30;font-family:\'Barlow Condensed\',sans-serif;'
+                f'font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">{col}</th>'
+            )
         html += '</tr></thead><tbody><tr>'
 
         for col, value in summary.items():
             if col in ['K%', 'BB%', 'FIP', 'Barrel%', 'HardHit%', 'BAA', 'wOBA'] and value != 0:
-                # Apply color coding based on value ranges
                 style = get_summary_stat_color(value, col)
                 formatted_value = format_summary_stat(col, value)
-                html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; {style}">{formatted_value}</td>'
             else:
-                # Regular formatting for other columns
+                style = "background-color:#242424;color:#E0E0E0;"
                 formatted_value = format_summary_stat(col, value)
-                html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{formatted_value}</td>'
+            html += (
+                f'<td style="border:1px solid #3A3A3A;padding:6px 10px;'
+                f'text-align:center;font-weight:bold;{style}">{formatted_value}</td>'
+            )
 
         html += '</tr></tbody></table>'
         html += SORTABLE_TABLE_JS
