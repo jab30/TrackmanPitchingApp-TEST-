@@ -950,11 +950,9 @@ def get_summary_stat_color(value, stat_name):
     # Handle 0 values specially based on whether lower is better
     if value == 0 or value == 0.0:
         if lower_is_better:
-            # For lower-is-better stats, 0 is the best (darkest red)
-            return "background-color: rgb(220, 53, 69); color: white; font-weight: bold;"
+            return "background-color: rgb(188, 51, 64); color: white; font-weight: bold;"
         else:
-            # For higher-is-better stats, 0 is the worst (darkest blue)
-            return "background-color: rgb(0, 123, 255); color: white; font-weight: bold;"
+            return "background-color: rgb(58, 112, 184); color: white; font-weight: bold;"
 
     # Normalize the value
     normalized = (value - min_val) / (max_val - min_val) if max_val > min_val else 0.5
@@ -964,23 +962,28 @@ def get_summary_stat_color(value, stat_name):
     if lower_is_better:
         normalized = 1 - normalized
 
-    # Create gradient color
-    if normalized < 0.5:
-        # Blue to white gradient (bad to neutral)
-        factor = normalized * 2
-        r = int(0 + (248 - 0) * factor)
-        g = int(123 + (249 - 123) * factor)
-        b = int(255 + (250 - 255) * factor)
-        text_color = "white" if normalized < 0.2 else "#333"
-        font_weight = "bold" if normalized < 0.3 else "normal"
+    # Create gradient color — same scale as savant bars: blue(bad) → grey(avg) → red(good)
+    if normalized < 0.33:
+        t = normalized / 0.33
+        r = int(58  + (140 - 58)  * t)
+        g = int(112 + (170 - 112) * t)
+        b = int(184 + (195 - 184) * t)
+        text_color = "white"
+        font_weight = "bold" if normalized < 0.15 else "normal"
+    elif normalized < 0.67:
+        t = (normalized - 0.33) / 0.34
+        r = int(140 + (210 - 140) * t)
+        g = int(170 + (185 - 170) * t)
+        b = int(195 + (195 - 195) * t)
+        text_color = "#1A1A1A"
+        font_weight = "normal"
     else:
-        # White to red gradient (neutral to good)
-        factor = (normalized - 0.5) * 2
-        r = int(248 + (220 - 248) * factor)
-        g = int(249 + (53 - 249) * factor)
-        b = int(250 + (69 - 250) * factor)
-        text_color = "#333" if normalized < 0.7 else "white"
-        font_weight = "normal" if normalized < 0.7 else "bold"
+        t = (normalized - 0.67) / 0.33
+        r = int(210 + (188 - 210) * t)
+        g = int(185 + (51  - 185) * t)
+        b = int(195 + (64  - 195) * t)
+        text_color = "white"
+        font_weight = "bold" if normalized > 0.85 else "normal"
 
     return f"background-color: rgb({r}, {g}, {b}); color: {text_color}; font-weight: {font_weight};"
 
@@ -1455,6 +1458,9 @@ body, .bslib-page-sidebar {
   padding: 16px 18px !important;
   margin-bottom: 16px !important;
   box-shadow: var(--shadow) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
 }
 
 .section-card-title {
