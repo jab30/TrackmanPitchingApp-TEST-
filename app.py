@@ -2518,7 +2518,6 @@ def server(input, output, session):
             legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#E8E8E8", size=10),
                         bordercolor="#3A3A3A", borderwidth=1),
             margin=dict(l=50, r=20, t=50, b=50),
-            height=420,
         )
 
     def _axis_style(title="", zeroline=False, **kwargs):
@@ -2708,7 +2707,7 @@ def server(input, output, session):
                             fill="tozeroy", fillcolor=fill_c,
                             hovertemplate=f"<b>{p}</b><br>%{{x:.1f}} mph<extra></extra>"))
             fig = go.Figure(traces)
-            fig.update_layout(**_plotly_layout(f"{display_name}: Velocity Distribution"))
+            fig.update_layout(**_plotly_layout(f"{display_name}: Velocity Distribution"), height=420)
             fig.update_xaxes(**_axis_style("Rel Speed (mph)"))
             fig.update_yaxes(**_axis_style("Density"))
             return _plotly_html(fig)
@@ -2747,7 +2746,7 @@ def server(input, output, session):
             legend_title = "Arm Angle Type" if "arm_angle_type" in data.columns else "Pitch Type"
             fig = go.Figure(traces)
             fig.update_layout(**_plotly_layout(f"{pitcher}: Release Point by Arm Angle"),
-                              shapes=shapes)
+                              shapes=shapes, height=420)
             fig.update_xaxes(**_axis_style("Rel Side (ft)"), range=[-4, 4])
             fig.update_yaxes(**_axis_style("Rel Height (ft)"), range=[0, 8])
             return _plotly_html(fig)
@@ -2882,7 +2881,7 @@ def server(input, output, session):
 
         fig = go.Figure(traces)
         fig.update_layout(**_plotly_layout(f"{display_name}: Release Angles (Tunneling)"),
-                          shapes=shapes)
+                          shapes=shapes, height=420)
         fig.update_xaxes(**_axis_style("Horizontal Release Angle"))
         fig.update_yaxes(**_axis_style("Vertical Release Angle"))
         return _plotly_html(fig)
