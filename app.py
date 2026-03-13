@@ -2649,9 +2649,11 @@ def server(input, output, session):
             title_suffix = "by Arm Angle" if color_by == "arm_angle" else "by Pitch Type"
             fig = go.Figure(traces)
             fig.update_layout(**_plotly_layout(f"{pitcher}: Pitch Movement ({title_suffix})"),
-                              shapes=shapes, annotations=annotations)
+                              shapes=shapes, annotations=annotations,
+                              width=480, height=480)
             fig.update_xaxes(**_axis_style("Horz Break (in)"), range=[-25, 25])
-            fig.update_yaxes(**_axis_style("Vert Break (in)"), range=[-25, 25])
+            fig.update_yaxes(**_axis_style("Vert Break (in)"), range=[-25, 25],
+                             scaleanchor="x", scaleratio=1)
             return _plotly_html(fig)
 
         # ── Release point ─────────────────────────────────────────────────────
@@ -2668,9 +2670,11 @@ def server(input, output, session):
                     marker=dict(color=c, size=5, opacity=0.6),
                     hovertemplate=f"<b>{p}</b><br>Side: %{{x:.2f}}<br>Ht: %{{y:.2f}}<extra></extra>"))
             fig = go.Figure(traces)
-            fig.update_layout(**_plotly_layout(f"{display_name}: Release Metrics"))
+            fig.update_layout(**_plotly_layout(f"{display_name}: Release Metrics"),
+                              width=480, height=480)
             fig.update_xaxes(**_axis_style("Rel Side (ft)"), range=[-4, 4])
-            fig.update_yaxes(**_axis_style("Rel Height (ft)"), range=[0, 8])
+            fig.update_yaxes(**_axis_style("Rel Height (ft)"), range=[0, 8],
+                             scaleanchor="x", scaleratio=1)
             return _plotly_html(fig)
 
         # ── Velocity distribution (KDE) ───────────────────────────────────────
@@ -2787,9 +2791,11 @@ def server(input, output, session):
             ]
 
             fig = go.Figure(traces)
-            fig.update_layout(**_plotly_layout(f"{pitcher}: {title}"), shapes=sz_shapes)
+            fig.update_layout(**_plotly_layout(f"{pitcher}: {title}"), shapes=sz_shapes,
+                              width=480, height=480)
             fig.update_xaxes(**_axis_style("Hor Loc"), range=[-3.5, 3.5])
-            fig.update_yaxes(**_axis_style("Vert Loc"), range=[0, 5.5])
+            fig.update_yaxes(**_axis_style("Vert Loc"), range=[0, 7],
+                             scaleanchor="x", scaleratio=1)
             return _plotly_html(fig)
 
         return ui.div(f"Unknown plot type: {plot_type}")
