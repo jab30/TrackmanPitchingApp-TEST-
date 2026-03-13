@@ -1837,6 +1837,11 @@ app_ui = ui.page_sidebar(
 
         ui.nav_panel("Pitch Data",
             ui.div(
+                ui.div("Pitch Usage by Batter Hand", class_="section-card-title"),
+                ui.output_ui("data_usage_by_hand_plot"),
+                class_="section-card"
+            ),
+            ui.div(
                 ui.div("Pitch Metrics", class_="section-card-title"),
                 ui.output_ui("data_pitch_metrics_table"),
                 class_="section-card"
@@ -3895,6 +3900,11 @@ def server(input, output, session):
     @output
     @render.ui
     def everything_usage_by_hand_plot():
+        return create_usage_by_hand_plot()
+
+    @output
+    @render.ui
+    def data_usage_by_hand_plot():
         return create_usage_by_hand_plot()
 
     @output
