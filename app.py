@@ -2929,7 +2929,9 @@ def server(input, output, session):
         return ui.HTML(html)
 
     def create_usage_by_hand_plot():
-        """Butterfly / tornado chart: pitch usage % vs LHH (left) and RHH (right)."""
+        """Butterfly / tornado chart — Plotly: pitch usage % vs LHH (left) and RHH (right)."""
+        import plotly.graph_objects as go
+
         data = filtered_data()
         view_mode = input.view_mode()
 
@@ -2955,79 +2957,113 @@ def server(input, output, session):
         if n_lhh == 0 and n_rhh == 0:
             return ui.div("No batter-hand data available")
 
-        # Usage % per hand per pitch type
         all_types = sorted(data["PitchType"].unique())
         lhh_pct = (lhh["PitchType"].value_counts(normalize=True) * 100).reindex(all_types, fill_value=0)
         rhh_pct = (rhh["PitchType"].value_counts(normalize=True) * 100).reindex(all_types, fill_value=0)
 
-        fig, ax = plt.subplots(figsize=(7, max(3, len(all_types) * 0.85)))
-        fig.patch.set_facecolor("#1A1A1A")
-        ax.set_facecolor("#1A1A1A")
+        max_pct = max(lhh_pct.max(), rhh_pct.max(), 1)
+        tick_max = int(np.ceil(max_pct / 10) * 10) + 10
 
-        bar_height = 0.52
-        y_positions = np.arange(len(all_types))
-
-        for i, pitch in enumerate(all_types):
+        traces = []
+        for pitch in all_types:
             color = pitch_colors_dict.get(pitch, "#9C8975")
             lv = lhh_pct[pitch]
             rv = rhh_pct[pitch]
 
-            # LHH bar (goes left — negative)
-            ax.barh(i, -lv, height=bar_height, color=color, alpha=0.92)
-            # RHH bar (goes right — positive)
-            ax.barh(i, rv,  height=bar_height, color=color, alpha=0.92)
+            # LHH — negative x
+            traces.append(go.Bar(
+                name=pitch,
+                y=[pitch],
+                x=[-lv],
+                orientation="h",
+                marker_color=color,
+                marker_opacity=0.92,
+                text=[f"{lv:.1f}%"] if lv > 0 else [""],
+                textposition="outside",
+                textfont=dict(color="#E8E8E8", size=11),
+                hovertemplate=f"<b>{pitch}</b><br>vs LHH: {lv:.1f}%<extra></extra>",
+                showlegend=False,
+                cliponaxis=False,
+            ))
+            # RHH — positive x
+            traces.append(go.Bar(
+                name=pitch,
+                y=[pitch],
+                x=[rv],
+                orientation="h",
+                marker_color=color,
+                marker_opacity=0.92,
+                text=[f"{rv:.1f}%"] if rv > 0 else [""],
+                textposition="outside",
+                textfont=dict(color="#E8E8E8", size=11),
+                hovertemplate=f"<b>{pitch}</b><br>vs RHH: {rv:.1f}%<extra></extra>",
+                showlegend=False,
+                cliponaxis=False,
+            ))
 
-            # Labels
-            if lv > 0:
-                ax.text(-lv - 0.6, i, f"{lv:.1f}%", va="center", ha="right",
-                        fontsize=8, color="#E8E8E8", fontfamily="monospace")
-            if rv > 0:
-                ax.text(rv + 0.6, i, f"{rv:.1f}%", va="center", ha="left",
-                        fontsize=8, color="#E8E8E8", fontfamily="monospace")
+        # Legend traces (one per pitch type, colored)
+        for pitch in all_types:
+            color = pitch_colors_dict.get(pitch, "#9C8975")
+            traces.append(go.Bar(
+                name=pitch,
+                y=[None], x=[None],
+                orientation="h",
+                marker_color=color,
+                showlegend=True,
+            ))
 
-        # Pitch type labels on y-axis
-        ax.set_yticks(y_positions)
-        ax.set_yticklabels(all_types, fontsize=9, color="#E8E8E8")
+        tick_vals = list(range(-tick_max, tick_max + 1, 10))
+        tick_text = [f"{abs(v)}%" for v in tick_vals]
 
-        # Center spine
-        ax.axvline(0, color="#E8E8E8", linewidth=1.2, zorder=5)
+        chart_height = max(260, len(all_types) * 58 + 100)
 
-        # X-axis ticks — show absolute values
-        max_pct = max(lhh_pct.max(), rhh_pct.max(), 1)
-        tick_max = int(np.ceil(max_pct / 10) * 10) + 10
-        ticks = np.arange(-tick_max, tick_max + 1, 10)
-        ax.set_xticks(ticks)
-        ax.set_xticklabels([f"{abs(t)}%" for t in ticks], fontsize=7.5, color="#999999")
+        fig = go.Figure(traces)
+        fig.update_layout(
+            barmode="overlay",
+            plot_bgcolor="#1A1A1A",
+            paper_bgcolor="#1A1A1A",
+            font=dict(family="Barlow, sans-serif", color="#E8E8E8"),
+            title=dict(
+                text="Pitch Usage by Batter Hand",
+                font=dict(color="#FDBB30", size=14, family="Barlow Condensed, sans-serif"),
+                x=0.5, xanchor="center",
+            ),
+            xaxis=dict(
+                range=[-tick_max - 5, tick_max + 5],
+                tickvals=tick_vals,
+                ticktext=tick_text,
+                tickfont=dict(color="#999999", size=10),
+                gridcolor="#3A3A3A",
+                gridwidth=0.5,
+                zeroline=True,
+                zerolinecolor="#E8E8E8",
+                zerolinewidth=1.5,
+                showline=False,
+                title=dict(
+                    text=f"<i>← vs LHH ({n_lhh})</i>   Usage %   <i>vs RHH ({n_rhh}) →</i>",
+                    font=dict(color="#FDBB30", size=11),
+                ),
+            ),
+            yaxis=dict(
+                tickfont=dict(color="#E8E8E8", size=11),
+                gridcolor="#2C2C2C",
+                showline=False,
+                categoryorder="array",
+                categoryarray=list(reversed(all_types)),
+            ),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom", y=1.02,
+                xanchor="center", x=0.5,
+                font=dict(color="#E8E8E8", size=10),
+                bgcolor="rgba(0,0,0,0)",
+            ),
+            margin=dict(l=20, r=20, t=60, b=50),
+            height=chart_height,
+        )
 
-        # Subtitle labels for LHH / RHH
-        ax.text(-tick_max * 0.55, -0.85, f"vs LHH ({n_lhh})",
-                fontsize=8.5, color="#FDBB30", ha="center", style="italic",
-                transform=ax.get_xaxis_transform())
-        ax.text(tick_max * 0.55, -0.85, f"vs RHH ({n_rhh})",
-                fontsize=8.5, color="#FDBB30", ha="center", style="italic",
-                transform=ax.get_xaxis_transform())
-
-        ax.set_xlabel("Usage %", fontsize=8, color="#999999", labelpad=14)
-        ax.xaxis.label.set_color("#999999")
-        ax.set_xlim(-tick_max, tick_max)
-
-        ax.set_title(f"Pitch Usage by Batter Hand",
-                     fontsize=11, fontweight="bold", color="#FDBB30", pad=10)
-
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_visible(False)
-        ax.spines["bottom"].set_color("#3A3A3A")
-        ax.tick_params(colors="#999999", which="both")
-        ax.grid(axis="x", color="#3A3A3A", linewidth=0.5, linestyle="--", alpha=0.7)
-
-        fig.tight_layout()
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png", bbox_inches="tight", dpi=110, facecolor="#1A1A1A")
-        buf.seek(0)
-        plt.close(fig)
-        img_data = base64.b64encode(buf.read()).decode()
-        return ui.HTML(f'<img src="data:image/png;base64,{img_data}" style="max-width:100%;height:auto;">')
+        html = fig.to_html(full_html=False, include_plotlyjs="cdn", config={"displayModeBar": False})
+        return ui.HTML(html)
 
     # Table outputs
     @output
