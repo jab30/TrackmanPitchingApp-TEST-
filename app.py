@@ -361,7 +361,7 @@ if "Date" in df.columns:
 # Build pitcher list
 all_pitchers = sorted(df[df["PitcherTeam"] == "KEN_OWL"]["Pitcher"].dropna().unique().tolist())
 
-# ── Load pitching+ percentile CSV ────────────────────────────────────────────
+# ── Load pitching+ percentile CSV + build distributions ──────────────────────
 def _load_pitching_plus_csv():
     paths = [
         "pitching_.csv",
@@ -372,63 +372,242 @@ def _load_pitching_plus_csv():
             try:
                 with open(p) as f:
                     content = f.read()
-                # CSV has two header blocks separated by a blank line; use the second
                 blocks = [b.strip() for b in content.split("\n\n") if b.strip()]
                 target = blocks[1] if len(blocks) > 1 else blocks[0]
                 return pd.read_csv(io.StringIO(target))
             except Exception as e:
                 print(f"pitching_.csv load error: {e}")
-    print("pitching_.csv not found — percentile circles will be skipped.")
+    print("pitching_.csv not found — percentiles will be skipped.")
     return pd.DataFrame()
 
 _pitching_plus_df = _load_pitching_plus_csv()
 
-# CSV stat col → display label + lower_is_better flag
+def _extract_raw(s):
+    """'23.0% (88%)' or '92 (85%)' → float value, or NaN."""
+    try:
+        return float(str(s).split("(")[0].strip().rstrip("%").strip())
+    except:
+        return np.nan
+
+# Pre-build sorted arrays from the full D1 distribution for rank() lookups
+_DIST_COLS = ["wOBA","K%","BB%","Miss%","CSW%","Chase%","Swing%",
+              "iZ-Contact%","vFB","Barrel%","HardHit%","ExitVel","AdjGB%","SwStrk%"]
+
+_PITCHING_DIST = {}   # col → sorted np.array (NaN-free)
+if not _pitching_plus_df.empty:
+    for _c in _DIST_COLS:
+        if _c in _pitching_plus_df.columns:
+            vals = _pitching_plus_df[_c].apply(_extract_raw).dropna()
+            # vFB: exclude 0s (means no data)
+            if _c == "vFB":
+                vals = vals[vals > 0]
+            _PITCHING_DIST[_c] = np.sort(vals.values)
+    print(f"Pitching+ distributions loaded: {list(_PITCHING_DIST.keys())}")
+
+def _rank_percentile(value: float, dist_col: str) -> int | None:
+    """Rank a value against the D1 distribution. Returns 1-100 or None."""
+    arr = _PITCHING_DIST.get(dist_col)
+    if arr is None or len(arr) == 0 or np.isnan(value):
+        return None
+    pct = int(round(np.searchsorted(arr, value, side="right") / len(arr) * 100))
+    return max(1, min(100, pct))
+
+# CSV stat col → (display label, lower_is_better, dist_col_for_rank)
 _PITCHING_PLUS_COLS = {
-    "wOBA":          ("wOBA",          True),
-    "xSLG_computed": ("xSLG",          True),   # computed from TrackMan via model
-    "K%":            ("K%",            False),
-    "BB%":           ("BB%",           True),
-    "Miss%":         ("Whiff%",        False),
-    "CSW%":          ("CSW%",          False),
-    "Chase%":        ("O-Swing%",      False),
-    "Swing%":        ("Swing%",        False),
-    "iZ-Contact%":   ("Z-Contact%",    True),
-    "vFB":           ("Fastball Velo", False),
-    "Barrel%":       ("Barrel%",       True),
-    "HardHit%":      ("HardHit%",      True),
-    "ExitVel":       ("AverageEV",     True),
-    "AdjGB%":        ("GB%",           False),
-    "SwStrk%":       ("SwStr%",        False),
+    "wOBA":          ("wOBA",          True,  "wOBA"),
+    "xSLG_computed": ("xSLG",          True,  "wOBA"),   # use wOBA dist as proxy; computed from model
+    "K%":            ("K%",            False, "K%"),
+    "BB%":           ("BB%",           True,  "BB%"),
+    "Miss%":         ("Whiff%",        False, "Miss%"),
+    "CSW%":          ("CSW%",          False, "CSW%"),
+    "Chase%":        ("O-Swing%",      False, "Chase%"),
+    "Swing%":        ("Swing%",        False, "Swing%"),
+    "iZ-Contact%":   ("Z-Contact%",    True,  "iZ-Contact%"),
+    "vFB":           ("Fastball Velo", False, "vFB"),
+    "Barrel%":       ("Barrel%",       True,  "Barrel%"),
+    "HardHit%":      ("HardHit%",      True,  "HardHit%"),
+    "ExitVel":       ("AverageEV",     True,  "ExitVel"),
+    "AdjGB%":        ("GB%",           False, "AdjGB%"),
+    "SwStrk%":       ("SwStr%",        False, "SwStrk%"),
 }
 
-def _parse_pct_value(s):
-    """Parse '23.0% (88%)' → (value_str, percentile_int) or (None, None)."""
-    if pd.isna(s) or str(s).strip() == "":
-        return None, None
-    s = str(s).strip()
-    if "(" in s and ")" in s:
-        val_part = s.split("(")[0].strip().rstrip("%").strip()
-        pct_part = s.split("(")[1].split(")")[0].strip().rstrip("%").strip()
-        try:
-            return val_part, int(float(pct_part))
-        except:
-            return val_part, None
-    return s.rstrip("%").strip(), None
+def compute_savant_stats(data: pd.DataFrame) -> dict:
+    """
+    Compute all 15 savant-bar stats from raw TrackMan pitch data.
+    Returns dict: {csv_col: float_value}  (same keys as _PITCHING_PLUS_COLS)
+    """
+    stats = {}
+    if data.empty:
+        return stats
 
-def get_pitching_plus_row(pitcher_name: str):
-    """Return the pitching+ row for a pitcher by full name match, or None."""
-    if _pitching_plus_df.empty or not pitcher_name:
-        return None
-    # Try exact playerFullName match first
-    match = _pitching_plus_df[_pitching_plus_df["playerFullName"].str.lower() == pitcher_name.lower()]
-    if match.empty:
-        # Try last name only
-        last = pitcher_name.split()[-1].lower()
-        match = _pitching_plus_df[_pitching_plus_df["player"].str.lower() == last]
-    if not match.empty:
-        return match.iloc[0]
-    return None
+    total = len(data)
+    pc    = "PitchCall"
+
+    # ── swing / contact flags ────────────────────────────────────────────────
+    swing_calls  = {"StrikeSwinging", "FoulBall", "FoulBallNotFieldable", "InPlay"}
+    whiff_calls  = {"StrikeSwinging"}
+    strike_calls = {"StrikeCalled", "StrikeSwinging", "FoulBall",
+                    "FoulBallNotFieldable", "InPlay"}
+
+    if pc in data.columns:
+        is_swing  = data[pc].isin(swing_calls)
+        is_whiff  = data[pc].isin(whiff_calls)
+        is_strike = data[pc].isin(strike_calls)
+        is_inplay = data[pc] == "InPlay"
+    else:
+        is_swing  = pd.Series(False, index=data.index)
+        is_whiff  = pd.Series(False, index=data.index)
+        is_strike = pd.Series(False, index=data.index)
+        is_inplay = pd.Series(False, index=data.index)
+
+    # zone flags
+    if "PlateLocSide" in data.columns and "PlateLocHeight" in data.columns:
+        in_zone = (
+            data["PlateLocSide"].between(-0.83, 0.83) &
+            data["PlateLocHeight"].between(1.5, 3.5)
+        )
+    else:
+        in_zone = pd.Series(False, index=data.index)
+    out_zone = ~in_zone
+
+    swing_n  = is_swing.sum()
+    iz_swing = (is_swing & in_zone).sum()
+    oz_n     = out_zone.sum()
+
+    # K% / BB%
+    if "KorBB" in data.columns:
+        if all(c in data.columns for c in ["GameID","Inning","PAofInning"]):
+            pa_grp = data.groupby(["GameID","Inning","PAofInning"])
+        elif all(c in data.columns for c in ["Date","Inning","PAofInning"]):
+            pa_grp = data.groupby(["Date","Inning","PAofInning"])
+        else:
+            pa_grp = None
+
+        if pa_grp is not None:
+            pa_last = pa_grp["KorBB"].last()
+            n_pa    = len(pa_last)
+            k_n     = (pa_last == "Strikeout").sum()
+            bb_n    = (pa_last == "Walk").sum()
+        else:
+            n_pa = total
+            k_n  = (data["KorBB"] == "Strikeout").sum()
+            bb_n = (data["KorBB"] == "Walk").sum()
+
+        stats["K%"]  = round(k_n  / n_pa * 100, 1) if n_pa > 0 else np.nan
+        stats["BB%"] = round(bb_n / n_pa * 100, 1) if n_pa > 0 else np.nan
+    else:
+        stats["K%"]  = np.nan
+        stats["BB%"] = np.nan
+
+    # wOBA (pitcher-side: lower is better for pitcher)
+    if "PlayResult" in data.columns and "KorBB" in data.columns:
+        woba_w = {"Walk":0.69,"HitByPitch":0.72,"Single":0.88,
+                  "Double":1.24,"Triple":1.56,"HomeRun":2.08}
+        num = (data["KorBB"].map({"Walk":0.69,"HitByPitch":0.72}).fillna(0).sum() +
+               sum(data["PlayResult"].eq(h).sum() * w for h,w in
+                   [("Single",0.88),("Double",1.24),("Triple",1.56),("HomeRun",2.08)]))
+        den = (data["KorBB"].isin(["Walk","Strikeout","HitByPitch"])).sum() + \
+              (data["PlayResult"].isin(["Single","Double","Triple","HomeRun","Out",
+                                        "FieldersChoice","Error"])).sum()
+        stats["wOBA"] = round(num / den, 3) if den > 0 else np.nan
+    else:
+        stats["wOBA"] = np.nan
+
+    # Whiff% = whiffs / swings
+    stats["Miss%"] = round(is_whiff.sum() / swing_n * 100, 1) if swing_n > 0 else np.nan
+
+    # CSW% = (called strikes + whiffs) / total pitches
+    csw_n = (data[pc].isin({"StrikeCalled","StrikeSwinging"}) if pc in data.columns
+             else pd.Series(False, index=data.index)).sum()
+    stats["CSW%"] = round(csw_n / total * 100, 1) if total > 0 else np.nan
+
+    # O-Swing% = swings on out-of-zone / out-of-zone pitches
+    oz_swing = (is_swing & out_zone).sum()
+    stats["Chase%"] = round(oz_swing / oz_n * 100, 1) if oz_n > 0 else np.nan
+
+    # Swing% = swings / total
+    stats["Swing%"] = round(swing_n / total * 100, 1) if total > 0 else np.nan
+
+    # IZ-Contact% = in-zone contacts / in-zone swings
+    iz_contact = ((~is_whiff) & is_swing & in_zone).sum()
+    stats["iZ-Contact%"] = round(iz_contact / iz_swing * 100, 1) if iz_swing > 0 else np.nan
+
+    # Fastball Velo
+    fb_types = {"Fastball","Four-Seam","Sinker","Cutter"}
+    fb_col   = "TaggedPitchType" if "TaggedPitchType" in data.columns else (
+               "PitchType" if "PitchType" in data.columns else None)
+    if fb_col and "RelSpeed" in data.columns:
+        fb_mask = data[fb_col].isin(fb_types)
+        fb_ev   = pd.to_numeric(data.loc[fb_mask, "RelSpeed"], errors="coerce").dropna()
+        stats["vFB"] = round(float(fb_ev.mean()), 1) if len(fb_ev) > 0 else np.nan
+    else:
+        stats["vFB"] = np.nan
+
+    # BIP stats
+    bip = data[is_inplay].copy()
+    if len(bip) > 0 and "ExitSpeed" in bip.columns and "Angle" in bip.columns:
+        ev = pd.to_numeric(bip["ExitSpeed"], errors="coerce")
+        la = pd.to_numeric(bip["Angle"],     errors="coerce")
+        valid = ev.notna() & la.notna()
+        ev_v  = ev[valid]; la_v = la[valid]; n_bip = valid.sum()
+
+        stats["Barrel%"]  = round((((ev_v >= 95) & (la_v >= 10) & (la_v <= 35)).sum()
+                                    / n_bip * 100), 1) if n_bip > 0 else np.nan
+        stats["HardHit%"] = round(((ev_v >= 95).sum() / n_bip * 100), 1) if n_bip > 0 else np.nan
+        stats["ExitVel"]  = round(float(ev_v.mean()), 1) if n_bip > 0 else np.nan
+
+        # GB% (LA < 10)
+        la_only = la[la.notna()]
+        stats["AdjGB%"] = round(((la_only < 10).sum() / len(la_only) * 100), 1) if len(la_only) > 0 else np.nan
+
+        # xSLG via model
+        preds = _predict_xslg(ev.values, la.values)
+        if preds is not None:
+            valid_preds = preds[~np.isnan(preds)]
+            stats["xSLG_computed"] = round(float(valid_preds.mean()), 3) if len(valid_preds) > 0 else np.nan
+        else:
+            stats["xSLG_computed"] = np.nan
+    else:
+        stats["Barrel%"] = stats["HardHit%"] = stats["ExitVel"] = np.nan
+        stats["AdjGB%"]  = stats["xSLG_computed"] = np.nan
+
+    # SwStr% = whiffs / total pitches
+    stats["SwStrk%"] = round(is_whiff.sum() / total * 100, 1) if total > 0 else np.nan
+
+    return stats
+
+
+def make_savant_row_from_stats(computed: dict) -> pd.Series:
+    """
+    Convert computed TrackMan stats dict into a pseudo-CSV row Series
+    with 'VALUE (PCT)' strings, ranked against the D1 distribution.
+    """
+    row = {}
+    for csv_col, (label, lower_is_better, dist_col) in _PITCHING_PLUS_COLS.items():
+        val = computed.get(csv_col, np.nan)
+        if isinstance(val, float) and np.isnan(val):
+            row[csv_col] = ""
+            continue
+
+        pct_raw = _rank_percentile(float(val), dist_col)
+        if pct_raw is None:
+            # For xSLG — no direct dist, leave N/A percentile
+            row[csv_col] = f"{val:.3f}" if csv_col == "xSLG_computed" else f"{val}"
+            continue
+
+        # Format value display
+        if csv_col in ("wOBA", "xSLG_computed"):
+            val_str = f"{val:.3f}"
+        elif csv_col == "vFB":
+            val_str = f"{int(round(val))}"
+        elif csv_col == "ExitVel":
+            val_str = f"{val:.1f}"
+        else:
+            val_str = f"{val:.1f}%"
+
+        row[csv_col] = f"{val_str} ({pct_raw}%)"
+
+    return pd.Series(row)
 
 # Date ranges
 if "Date" in df.columns and not df["Date"].isna().all():
@@ -1861,33 +2040,11 @@ def server(input, output, session):
         else:
             summary["wOBA"] = 0.0
 
-        # ── xSLG: compute from TrackMan BIP for this pitcher ────────────────
-        xslg_val = None
-        if not view_mode and not in_play.empty and all(c in in_play.columns for c in ["ExitSpeed","Angle"]):
-            ev = pd.to_numeric(in_play["ExitSpeed"], errors="coerce")
-            la = pd.to_numeric(in_play["Angle"],     errors="coerce")
-            preds = _predict_xslg(ev.values, la.values)
-            if preds is not None:
-                valid = preds[~np.isnan(preds)]
-                if len(valid) > 0:
-                    xslg_val = round(float(valid.mean()), 3)
-
-        # ── Savant-style percentile bar chart ─────────────────────────────
-        if not view_mode:
-            pp_row       = get_pitching_plus_row(display_name)
-            chart_title  = display_name
-        else:
-            pp_row       = None
-            chart_title  = "KEN_OWL Team"
-
-        # Inject xSLG into the row if we have it (replaces xWOBA slot visually)
-        # We add it as a synthetic column so make_savant_bars_html can pick it up
-        if pp_row is not None and xslg_val is not None:
-            pp_row = pp_row.copy()
-            # Store formatted like CSV: ".312" with no percentile (shows value, N/A for pct)
-            pp_row["xSLG_computed"] = f"{xslg_val:.3f}"
-
-        bars_html = make_savant_bars_html(pp_row, chart_title)
+        # ── Compute all Savant stats from TrackMan + rank vs D1 distribution ─
+        chart_title   = display_name if not view_mode else "KEN_OWL Team"
+        savant_stats  = compute_savant_stats(data)
+        savant_row    = make_savant_row_from_stats(savant_stats)
+        bars_html     = make_savant_bars_html(savant_row, chart_title)
 
         # ── Traditional summary table (kept below circles) ─────────────────
         table_id = "summary_stats_table_" + str(hash(display_name) % 10000)
