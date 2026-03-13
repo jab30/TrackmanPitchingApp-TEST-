@@ -402,6 +402,7 @@ def _extract_raw(s):
 
 # ── D1 percentile cutpoints (p1–p100), hardcoded from 1329-pitcher pitching+ dataset ──
 _D1_CUTPOINTS = {
+    'FIP': [2.5,2.7,2.85,2.97,3.06,3.14,3.21,3.27,3.33,3.38,3.43,3.47,3.51,3.55,3.58,3.61,3.64,3.67,3.70,3.72,3.75,3.77,3.79,3.81,3.83,3.85,3.87,3.89,3.91,3.93,3.95,3.96,3.98,4.00,4.01,4.03,4.04,4.06,4.07,4.09,4.10,4.12,4.13,4.15,4.16,4.17,4.19,4.20,4.21,4.23,4.24,4.25,4.27,4.28,4.29,4.31,4.32,4.33,4.35,4.36,4.38,4.39,4.41,4.42,4.44,4.45,4.47,4.48,4.50,4.52,4.54,4.56,4.58,4.60,4.62,4.64,4.67,4.69,4.72,4.74,4.77,4.80,4.83,4.86,4.90,4.94,4.98,5.03,5.08,5.14,5.21,5.28,5.37,5.47,5.58,5.72,5.90,6.10,6.40,7.20],
     'wOBA': [0.22, 0.235, 0.248, 0.256, 0.261, 0.267, 0.27, 0.273, 0.276, 0.279, 0.283, 0.287, 0.288, 0.29, 0.292, 0.293, 0.296, 0.297, 0.299, 0.3, 0.301, 0.302, 0.304, 0.306, 0.307, 0.308, 0.309, 0.311, 0.312, 0.314, 0.315, 0.317, 0.318, 0.318, 0.32, 0.321, 0.322, 0.323, 0.324, 0.325, 0.326, 0.327, 0.329, 0.33, 0.331, 0.333, 0.334, 0.335, 0.336, 0.337, 0.337, 0.339, 0.34, 0.341, 0.342, 0.344, 0.345, 0.346, 0.348, 0.349, 0.35, 0.351, 0.352, 0.353, 0.354, 0.355, 0.356, 0.357, 0.358, 0.359, 0.36, 0.362, 0.363, 0.366, 0.368, 0.369, 0.37, 0.371, 0.372, 0.373, 0.375, 0.377, 0.378, 0.379, 0.381, 0.383, 0.385, 0.386, 0.389, 0.392, 0.393, 0.396, 0.399, 0.405, 0.408, 0.411, 0.415, 0.423, 0.435, 0.48],
     'K%': [9.968, 11.0, 11.5, 11.912, 12.4, 12.7, 13.2, 13.5, 13.8, 14.1, 14.4, 14.536, 14.8, 15.0, 15.2, 15.4, 15.6, 15.704, 15.9, 16.1, 16.2, 16.3, 16.5, 16.6, 16.8, 16.9, 17.0, 17.2, 17.2, 17.4, 17.6, 17.7, 17.8, 17.9, 18.1, 18.2, 18.3, 18.4, 18.5, 18.7, 18.8, 18.9, 19.0, 19.2, 19.3, 19.488, 19.6, 19.8, 19.9, 20.1, 20.2, 20.4, 20.5, 20.6, 20.8, 20.9, 21.1, 21.2, 21.3, 21.5, 21.6, 21.8, 21.9, 22.092, 22.2, 22.4, 22.5, 22.8, 23.0, 23.3, 23.4, 23.616, 23.8, 24.0, 24.1, 24.3, 24.5, 24.7, 24.812, 25.0, 25.3, 25.4, 25.7, 26.0, 26.18, 26.6, 26.836, 27.364, 27.7, 28.02, 28.5, 28.9, 29.5, 30.132, 31.2, 31.9, 32.9, 34.044, 35.944, 42.6],
     'BB%': [3.028, 3.9, 4.2, 4.512, 4.8, 5.0, 5.196, 5.324, 5.452, 5.6, 5.7, 5.9, 5.964, 6.0, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.788, 6.9, 7.0, 7.0, 7.1, 7.2, 7.3, 7.4, 7.4, 7.5, 7.6, 7.6, 7.7, 7.752, 7.88, 7.9, 8.0, 8.1, 8.1, 8.2, 8.3, 8.376, 8.4, 8.5, 8.56, 8.688, 8.8, 8.8, 8.9, 9.0, 9.0, 9.1, 9.2, 9.2, 9.3, 9.4, 9.5, 9.5, 9.6, 9.6, 9.7, 9.8, 9.9, 10.0, 10.02, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8, 10.9, 11.0, 11.1, 11.2, 11.3, 11.4, 11.6, 11.7, 11.8, 12.0, 12.1, 12.2, 12.408, 12.6, 12.7, 13.0, 13.1, 13.4, 13.6, 13.9, 14.2, 14.5, 15.1, 15.716, 16.7, 18.044, 26.2],
@@ -430,7 +431,7 @@ def _rank_percentile(value: float, dist_col: str) -> int | None:
 # CSV stat col → (display label, lower_is_better, dist_col_for_rank)
 _PITCHING_PLUS_COLS = {
     "wOBA":          ("wOBA",          True,  "wOBA"),
-    "xSLG_computed": ("xSLG*",         True,  "wOBA"),
+    "FIP":           ("FIP",           True,  "FIP"),
     "K%":            ("K%",            False, "K%"),
     "BB%":           ("BB%",           True,  "BB%"),
     "Miss%":         ("Whiff%",        False, "Miss%"),
@@ -587,10 +588,40 @@ def compute_savant_stats(data: pd.DataFrame) -> dict:
     else:
         print(f"xSLG debug: BIP branch skipped — len(bip)={len(bip)}, cols={list(bip.columns[:10]) if len(bip)>0 else 'empty'}")
         stats["Barrel%"] = stats["HardHit%"] = stats["ExitVel"] = np.nan
-        stats["AdjGB%"]  = stats["xSLG_computed"] = np.nan
+        stats["AdjGB%"]  = np.nan
 
     # SwStr% = whiffs / total pitches
     stats["SwStrk%"] = round(is_whiff.sum() / total * 100, 1) if total > 0 else np.nan
+
+    # FIP — reuse existing summary logic
+    try:
+        K_n  = is_whiff.sum()  # approximation: use whiffs as Ks proxy isn't ideal
+        # Use KorBB column if available for proper K count
+        if "KorBB" in data.columns:
+            k_col = data["KorBB"].str.strip().str.lower() if data["KorBB"].dtype == object else data["KorBB"]
+            K_n  = (k_col == "strikeout").sum()
+            BB_n = (k_col == "walk").sum()
+        else:
+            BB_n = 0
+        HR_n = 0
+        if "PlayResult" in data.columns:
+            HR_n = (data["PlayResult"].str.strip().str.lower() == "homerun").sum()
+        if "HitType" in data.columns:
+            pass  # already counted via PlayResult
+        # IP from OutsOnPlay
+        outs = 0
+        if "OutsOnPlay" in data.columns:
+            outs = pd.to_numeric(data["OutsOnPlay"], errors="coerce").fillna(0).sum()
+        # Add strikeouts as outs
+        outs += K_n
+        ip = outs / 3.0
+        fip_constant = 3.18
+        if ip > 0:
+            stats["FIP"] = round(((13 * HR_n) + (3 * BB_n) - (2 * K_n)) / ip + fip_constant, 2)
+        else:
+            stats["FIP"] = np.nan
+    except Exception:
+        stats["FIP"] = np.nan
 
     return stats
 
@@ -609,7 +640,7 @@ def make_savant_row_from_stats(computed: dict) -> pd.Series:
 
         pct_raw = _rank_percentile(float(val), dist_col)
         if pct_raw is None:
-            row[csv_col] = f"{val:.3f}" if csv_col == "xSLG_computed" else f"{val}"
+            row[csv_col] = f"{val}"
             continue
 
         # Flip percentile for lower_is_better stats so bubble shows quality rank
@@ -617,8 +648,10 @@ def make_savant_row_from_stats(computed: dict) -> pd.Series:
         pct_display = max(1, min(100, pct_display))
 
         # Format value display
-        if csv_col in ("wOBA", "xSLG_computed"):
+        if csv_col == "wOBA":
             val_str = f"{val:.3f}"
+        elif csv_col == "FIP":
+            val_str = f"{val:.2f}"
         elif csv_col == "vFB":
             val_str = f"{int(round(val))}"
         elif csv_col == "ExitVel":
@@ -2066,42 +2099,7 @@ def server(input, output, session):
         savant_row    = make_savant_row_from_stats(savant_stats)
         bars_html     = make_savant_bars_html(savant_row, chart_title)
 
-        # ── Traditional summary table (kept below circles) ─────────────────
-        table_id = "summary_stats_table_" + str(hash(display_name) % 10000)
-
-        header_text = f"{display_name} — Computed Stats (TrackMan)"
-        if view_mode:
-            num_pitchers = data['Pitcher'].nunique() if 'Pitcher' in data.columns else 0
-            header_text = f"KEN_OWL Team Stats ({num_pitchers} Pitchers)"
-
-        html  = bars_html
-        html += f'<div style="margin:12px 0 6px 0;font-family:\'Barlow Condensed\',sans-serif;font-size:13px;font-weight:700;color:#FDBB30;letter-spacing:1px;text-transform:uppercase;">{header_text}</div>'
-        html += f'<table id="{table_id}" style="border-collapse:collapse;width:100%;font-size:13px;">'
-        html += '<thead><tr>'
-        for col in summary.keys():
-            html += (
-                f'<th style="border:1px solid #3A3A3A;padding:6px 10px;'
-                f'background-color:#2C2C2C;color:#FDBB30;font-family:\'Barlow Condensed\',sans-serif;'
-                f'font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">{col}</th>'
-            )
-        html += '</tr></thead><tbody><tr>'
-
-        for col, value in summary.items():
-            if col in ['K%', 'BB%', 'FIP', 'Barrel%', 'HardHit%', 'BAA', 'wOBA'] and value != 0:
-                style = get_summary_stat_color(value, col)
-                formatted_value = format_summary_stat(col, value)
-            else:
-                style = "background-color:#242424;color:#E0E0E0;"
-                formatted_value = format_summary_stat(col, value)
-            html += (
-                f'<td style="border:1px solid #3A3A3A;padding:6px 10px;'
-                f'text-align:center;font-weight:bold;{style}">{formatted_value}</td>'
-            )
-
-        html += '</tr></tbody></table>'
-        html += SORTABLE_TABLE_JS
-        html += f'<script>setTimeout(() => makeSortable("{table_id}"), 100);</script>'
-        return ui.HTML(html)
+        return ui.HTML(bars_html)
 
     def create_pitch_stats_table():
         data = filtered_data()
