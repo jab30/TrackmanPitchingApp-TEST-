@@ -1266,13 +1266,14 @@ def make_mirrored_bars_html(lhh_row, rhh_row, title: str) -> str:
     COLS = list(_PITCHING_PLUS_COLS.items())
 
     # ── Layout ───────────────────────────────────────────────────────────────
-    W         = 900          # total SVG width
-    VAL_W     = 52           # width reserved for raw value on each outer edge
-    LBL_W     = 70           # center label column width
+    W         = 1000         # total SVG width
+    VAL_W     = 72           # width reserved for raw value on each outer edge (wide enough to never overlap bubble)
+    LBL_W     = 90           # center label column width
     BAR_AREA  = (W - LBL_W - 2 * VAL_W) // 2   # bar area per side
     LEFT_BAR_END  = VAL_W + BAR_AREA             # x where LHH bar ends (center-left edge)
     CENTER_X      = VAL_W + BAR_AREA + LBL_W // 2  # middle of label col
     RIGHT_BAR_START = VAL_W + BAR_AREA + LBL_W  # x where RHH bar starts
+    BUBBLE_R  = 12           # bubble radius
 
     ROW_H    = 34
     BAR_H    = 16
@@ -1368,7 +1369,7 @@ def make_mirrored_bars_html(lhh_row, rhh_row, title: str) -> str:
             fill_w     = (lhh_pct / 100) * BAR_AREA
             bar_left   = LEFT_BAR_END - fill_w
             bubble_cx  = bar_left
-            bubble_r   = 11
+            bubble_r   = BUBBLE_R
             parts.append(
                 f'<rect x="{bar_left:.1f}" y="{bar_y}" width="{fill_w:.1f}" height="{BAR_H}" fill="{color}" rx="3"/>'
             )
@@ -1383,8 +1384,8 @@ def make_mirrored_bars_html(lhh_row, rhh_row, title: str) -> str:
             )
         lhh_display = lhh_val_str if lhh_val_str else "—"
         parts.append(
-            f'<text x="{VAL_W - 4}" y="{bar_cy + 5}" text-anchor="end" '
-            f'font-family="Barlow Condensed,sans-serif" font-size="11" font-weight="600" fill="#DDDDDD">'
+            f'<text x="{VAL_W - 8}" y="{bar_cy + 5}" text-anchor="end" '
+            f'font-family="Barlow Condensed,sans-serif" font-size="12" font-weight="600" fill="#DDDDDD">'
             f'{lhh_display}</text>'
         )
 
@@ -1393,7 +1394,7 @@ def make_mirrored_bars_html(lhh_row, rhh_row, title: str) -> str:
             color     = _bar_color(rhh_pct, lower_is_better)
             fill_w    = (rhh_pct / 100) * BAR_AREA
             bubble_cx = RIGHT_BAR_START + fill_w
-            bubble_r  = 11
+            bubble_r  = BUBBLE_R
             parts.append(
                 f'<rect x="{RIGHT_BAR_START}" y="{bar_y}" width="{fill_w:.1f}" height="{BAR_H}" fill="{color}" rx="3"/>'
             )
@@ -1408,8 +1409,8 @@ def make_mirrored_bars_html(lhh_row, rhh_row, title: str) -> str:
             )
         rhh_display = rhh_val_str if rhh_val_str else "—"
         parts.append(
-            f'<text x="{W - VAL_W + 4}" y="{bar_cy + 5}" text-anchor="start" '
-            f'font-family="Barlow Condensed,sans-serif" font-size="11" font-weight="600" fill="#DDDDDD">'
+            f'<text x="{W - VAL_W + 8}" y="{bar_cy + 5}" text-anchor="start" '
+            f'font-family="Barlow Condensed,sans-serif" font-size="12" font-weight="600" fill="#DDDDDD">'
             f'{rhh_display}</text>'
         )
 
