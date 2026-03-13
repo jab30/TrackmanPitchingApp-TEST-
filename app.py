@@ -382,6 +382,20 @@ def _load_pitching_plus_csv():
 
 _pitching_plus_df = _load_pitching_plus_csv()
 
+def _parse_pct_value(s):
+    """Parse '23.0% (88%)' or '92 (85%)' → (value_str, percentile_int) or (val_str, None)."""
+    if pd.isna(s) or str(s).strip() == "":
+        return None, None
+    s = str(s).strip()
+    if "(" in s and ")" in s:
+        val_part = s.split("(")[0].strip().rstrip("%").strip()
+        pct_part = s.split("(")[1].split(")")[0].strip().rstrip("%").strip()
+        try:
+            return val_part, int(float(pct_part))
+        except:
+            return val_part, None
+    return s.rstrip("%").strip(), None
+
 def _extract_raw(s):
     """'23.0% (88%)' or '92 (85%)' → float value, or NaN."""
     try:
@@ -1118,7 +1132,7 @@ def make_savant_bars_html(row, title: str) -> str:
         )
 
     # ── Rows ─────────────────────────────────────────────────────────────────
-    for i, (csv_col, (label, lower_is_better)) in enumerate(COLS):
+    for i, (csv_col, (label, lower_is_better, *_)) in enumerate(COLS):
         y_top   = HEADER_H + i * ROW_H
         bar_cy  = y_top + ROW_H / 2
         bar_y   = bar_cy - BAR_H / 2
