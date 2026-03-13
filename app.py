@@ -2027,7 +2027,64 @@ def server(input, output, session):
         html += f'<script>setTimeout(() => makeSortable("{table_id}"), 100);</script>'
         return ui.HTML(html)
 
+    def _plotly_layout(title_text):
+        """Shared dark Plotly layout for all plots."""
+        return dict(
+            plot_bgcolor="#1A1A1A",
+            paper_bgcolor="#1A1A1A",
+            font=dict(family="Barlow, sans-serif", color="#E8E8E8", size=11),
+            title=dict(text=title_text, font=dict(color="#FDBB30", size=13,
+                       family="Barlow Condensed, sans-serif"), x=0.5, xanchor="center"),
+            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#E8E8E8", size=10),
+                        bordercolor="#3A3A3A", borderwidth=1),
+            margin=dict(l=50, r=20, t=50, b=50),
+            height=420,
+        )
+
+    def _axis_style(title="", zeroline=False, **kwargs):
+        return dict(title=dict(text=title, font=dict(color="#999999", size=11)),
+                    tickfont=dict(color="#999999", size=10),
+                    gridcolor="#3A3A3A", gridwidth=0.5,
+                    zerolinecolor="#555555", zerolinewidth=1,
+                    zeroline=zeroline,
+                    showline=False, **kwargs)
+
+    def _plotly_html(fig):
+        return ui.HTML(fig.to_html(full_html=False, include_plotlyjs="cdn",
+                                   config={"displayModeBar": False}))
+
+    def _ellipse_trace(x, y, color, n_std=1.0):
+        """Return a Plotly scatter trace drawing a confidence ellipse."""
+        valid = ~(np.isnan(x) | np.isnan(y))
+        x, y = x[valid], y[valid]
+        if len(x) < 3:
+            return None
+        try:
+            cov = np.cov(x, y)
+            if cov.ndim < 2:
+                return None
+            eigvals, eigvecs = np.linalg.eigh(cov)
+            order = eigvals.argsort()[::-1]
+            eigvals, eigvecs = eigvals[order], eigvecs[:, order]
+            if np.any(eigvals <= 0):
+                return None
+            angle = np.arctan2(eigvecs[1, 0], eigvecs[0, 0])
+            w, h = 2 * n_std * np.sqrt(eigvals)
+            t = np.linspace(0, 2 * np.pi, 120)
+            ell_x = w / 2 * np.cos(t)
+            ell_y = h / 2 * np.sin(t)
+            rot_x = np.cos(angle) * ell_x - np.sin(angle) * ell_y + np.mean(x)
+            rot_y = np.sin(angle) * ell_x + np.cos(angle) * ell_y + np.mean(y)
+            return go.Scatter(x=rot_x, y=rot_y, mode="lines",
+                              line=dict(color=color, width=1.5, dash="dot"),
+                              fill="toself", fillcolor=color,
+                              opacity=0.15, showlegend=False, hoverinfo="skip")
+        except Exception:
+            return None
+
     def create_plot(plot_type, title="", pitch_call_filter=None):
+        import plotly.graph_objects as go
+
         data = filtered_data()
         view_mode = input.view_mode()
 
@@ -2043,159 +2100,166 @@ def server(input, output, session):
             return ui.div()
         pitcher = display_name
 
+        # ── Movement ─────────────────────────────────────────────────────────
         if plot_type == "movement":
             if not all(col in data.columns for col in ["HorzBreak", "InducedVertBreak", "PitchType"]):
                 return ui.div("Required columns for movement plot not found")
 
             color_by = input.movement_color_by()
-            fig, ax = plt.subplots(figsize=(8, 6))
+            traces = []
 
             if color_by == "arm_angle" and "arm_angle_type" in data.columns:
-                available_angles = data["arm_angle_type"].dropna().unique()
-                colors = {angle: arm_angle_colors.get(angle, "#9C8975") for angle in available_angles}
-                for angle_type in available_angles:
-                    subset = data[data["arm_angle_type"] == angle_type]
-                    ax.scatter(subset["HorzBreak"], subset["InducedVertBreak"],
-                               c=colors[angle_type], label=angle_type, s=10, alpha=0.6)
-
-                    # Add confidence ellipse for each arm angle type
-                    if len(subset) > 2:
-                        confidence_ellipse(subset["HorzBreak"].values, subset["InducedVertBreak"].values,
-                                           ax, colors[angle_type], n_std=1.0, alpha=0.3, linewidth=2,
-                                           facecolor=colors[angle_type])
+                groups = data["arm_angle_type"].dropna().unique()
+                color_map = {g: arm_angle_colors.get(g, "#9C8975") for g in groups}
+                legend_key = "Arm Angle Type"
+                for g in groups:
+                    sub = data[data["arm_angle_type"] == g]
+                    c = color_map[g]
+                    traces.append(go.Scatter(
+                        x=sub["HorzBreak"], y=sub["InducedVertBreak"],
+                        mode="markers", name=g,
+                        marker=dict(color=c, size=5, opacity=0.6),
+                        hovertemplate=f"<b>{g}</b><br>HB: %{{x:.1f}}<br>IVB: %{{y:.1f}}<extra></extra>"))
+                    ell = _ellipse_trace(sub["HorzBreak"].values, sub["InducedVertBreak"].values, c)
+                    if ell:
+                        traces.append(ell)
             else:
-                available_pitches = data["PitchType"].unique()
-                colors = {p: pitch_colors_dict.get(p, "#9C8975") for p in available_pitches}
-                for pitch_type in available_pitches:
-                    subset = data[data["PitchType"] == pitch_type]
-                    ax.scatter(subset["HorzBreak"], subset["InducedVertBreak"],
-                               c=colors[pitch_type], label=pitch_type, s=10, alpha=0.6)
+                groups = data["PitchType"].unique()
+                color_map = {p: pitch_colors_dict.get(p, "#9C8975") for p in groups}
+                legend_key = "Pitch Type"
+                for p in groups:
+                    sub = data[data["PitchType"] == p]
+                    c = color_map[p]
+                    traces.append(go.Scatter(
+                        x=sub["HorzBreak"], y=sub["InducedVertBreak"],
+                        mode="markers", name=p,
+                        marker=dict(color=c, size=5, opacity=0.6),
+                        hovertemplate=f"<b>{p}</b><br>HB: %{{x:.1f}}<br>IVB: %{{y:.1f}}<extra></extra>"))
+                    ell = _ellipse_trace(sub["HorzBreak"].values, sub["InducedVertBreak"].values, c)
+                    if ell:
+                        traces.append(ell)
 
-                    # Add confidence ellipse for each pitch type
-                    if len(subset) > 2:
-                        confidence_ellipse(subset["HorzBreak"].values, subset["InducedVertBreak"].values,
-                                           ax, colors[pitch_type], n_std=1.0, alpha=0.3, linewidth=2,
-                                           facecolor=colors[pitch_type])
-
-            add_origin_lines(ax)
+            # Zero lines + optional arm angle ray
+            shapes = [
+                dict(type="line", x0=-25, x1=25, y0=0, y1=0,
+                     line=dict(color="#555555", width=1)),
+                dict(type="line", x0=0, x1=0, y0=-25, y1=25,
+                     line=dict(color="#555555", width=1)),
+            ]
+            annotations = []
             if "arm_angle" in data.columns and not data["arm_angle"].isna().all():
                 avg_arm_angle = data["arm_angle"].mean()
-                corrected_arm_angle = 90 - avg_arm_angle
-                angle_rad = np.radians(corrected_arm_angle)
-                line_length = 30
-                x_end = np.cos(angle_rad) * line_length
-                y_end = np.sin(angle_rad) * line_length
-
+                corrected = 90 - avg_arm_angle
+                angle_rad = np.radians(corrected)
+                x_end = np.cos(angle_rad) * 25
+                y_end = np.sin(angle_rad) * 25
                 pitcher_hand = None
-                if 'PitcherThrows' in data.columns:
-                    pitcher_hand = data['PitcherThrows'].iloc[0] if not data['PitcherThrows'].isna().all() else None
-                elif 'pitcherHand' in data.columns:
-                    pitcher_hand = data['pitcherHand'].iloc[0] if not data['pitcherHand'].isna().all() else None
-
-                if pitcher_hand and str(pitcher_hand).upper().startswith('L'):
+                for col in ["PitcherThrows", "pitcherHand"]:
+                    if col in data.columns and not data[col].isna().all():
+                        pitcher_hand = data[col].iloc[0]
+                        break
+                if pitcher_hand and str(pitcher_hand).upper().startswith("L"):
                     x_end *= -1
+                shapes.append(dict(type="line", x0=0, x1=x_end, y0=0, y1=y_end,
+                                   line=dict(color="#FDBB30", width=1.5, dash="dash")))
+                annotations.append(dict(x=25, y=-23, text=f"{corrected:.1f}°",
+                                        showarrow=False, font=dict(color="#FDBB30", size=10),
+                                        xanchor="right"))
 
-                ax.plot([0, x_end], [0, y_end], linestyle='--', color='black', linewidth=2, alpha=0.7)
-                ax.text(0.98, 0.02, f'{90 - avg_arm_angle:.1f}°', transform=ax.transAxes,
-                        fontsize=10, color='black', ha='right', va='bottom',
-                        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=0.5))
-
-            ax.set_xlim(-25, 25)
-            ax.set_ylim(-25, 25)
             title_suffix = "by Arm Angle" if color_by == "arm_angle" else "by Pitch Type"
-            ax.set_title(f"{pitcher}: Pitch Movement ({title_suffix})")
-            ax.set_xlabel("Horz Break (in)")
-            ax.set_ylabel("Vert Break (in)")
-            ax.legend(title="Arm Angle Type" if color_by == "arm_angle" else "Pitch Type",
-                      fontsize=6, title_fontsize=7, loc="upper left", bbox_to_anchor=(1, 1))
+            fig = go.Figure(traces)
+            fig.update_layout(**_plotly_layout(f"{pitcher}: Pitch Movement ({title_suffix})"),
+                              shapes=shapes, annotations=annotations)
+            fig.update_xaxes(**_axis_style("Horz Break (in)"), range=[-25, 25])
+            fig.update_yaxes(**_axis_style("Vert Break (in)"), range=[-25, 25])
+            return _plotly_html(fig)
 
+        # ── Release point ─────────────────────────────────────────────────────
         elif plot_type == "release":
             if not all(col in data.columns for col in ["RelSide", "RelHeight", "PitchType"]):
                 return ui.div()
-            fig, ax = plt.subplots(figsize=(8, 6))
-            available_pitches = data["PitchType"].unique()
-            colors = {p: pitch_colors_dict.get(p, "#9C8975") for p in available_pitches}
-            for pitch_type in available_pitches:
-                subset = data[data["PitchType"] == pitch_type]
-                ax.scatter(subset["RelSide"], subset["RelHeight"], c=colors[pitch_type],
-                           label=pitch_type, s=10, alpha=0.6)
-            ax.set_xlim(-4, 4)
-            ax.set_ylim(0, 8)
-            ax.set_title(f"{display_name}: Release Metrics")
-            ax.set_xlabel("Rel Side (ft)")
-            ax.set_ylabel("Rel Height (ft)")
-            ax.grid(True, alpha=0.3)
-            ax.legend(title="Pitch Type", fontsize=6, title_fontsize=7,
-                      loc="upper left", bbox_to_anchor=(1, 1))
+            traces = []
+            for p in data["PitchType"].unique():
+                sub = data[data["PitchType"] == p]
+                c = pitch_colors_dict.get(p, "#9C8975")
+                traces.append(go.Scatter(
+                    x=sub["RelSide"], y=sub["RelHeight"],
+                    mode="markers", name=p,
+                    marker=dict(color=c, size=5, opacity=0.6),
+                    hovertemplate=f"<b>{p}</b><br>Side: %{{x:.2f}}<br>Ht: %{{y:.2f}}<extra></extra>"))
+            fig = go.Figure(traces)
+            fig.update_layout(**_plotly_layout(f"{display_name}: Release Metrics"))
+            fig.update_xaxes(**_axis_style("Rel Side (ft)"), range=[-4, 4])
+            fig.update_yaxes(**_axis_style("Rel Height (ft)"), range=[0, 8])
+            return _plotly_html(fig)
 
+        # ── Velocity distribution (KDE) ───────────────────────────────────────
         elif plot_type == "velocity":
             if "RelSpeed" not in data.columns:
                 return ui.div()
-            fig, ax = plt.subplots(figsize=(8, 6))
-            available_pitches = data["PitchType"].unique()
-            colors = {p: pitch_colors_dict.get(p, "#9C8975") for p in available_pitches}
-
-            # Use custom KDE implementation
+            traces = []
             all_velocities = data["RelSpeed"].dropna()
             if len(all_velocities) > 0:
-                vel_min, vel_max = all_velocities.min() - 2, all_velocities.max() + 2
+                vel_min = all_velocities.min() - 2
+                vel_max = all_velocities.max() + 2
                 vel_range = np.linspace(vel_min, vel_max, 200)
+                for p in data["PitchType"].unique():
+                    sub = pd.to_numeric(data[data["PitchType"] == p]["RelSpeed"], errors="coerce").dropna()
+                    if len(sub) > 1:
+                        density = simple_kde(sub.values, vel_range)
+                        c = pitch_colors_dict.get(p, "#9C8975")
+                        traces.append(go.Scatter(
+                            x=vel_range, y=density, mode="lines", name=p,
+                            line=dict(color=c, width=2),
+                            fill="tozeroy", fillcolor=c.replace(")", ",0.25)").replace("rgb", "rgba")
+                                       if c.startswith("rgb") else c + "40",
+                            hovertemplate=f"<b>{p}</b><br>%{{x:.1f}} mph<extra></extra>"))
+            fig = go.Figure(traces)
+            fig.update_layout(**_plotly_layout(f"{display_name}: Velocity Distribution"))
+            fig.update_xaxes(**_axis_style("Rel Speed (mph)"))
+            fig.update_yaxes(**_axis_style("Density"))
+            return _plotly_html(fig)
 
-                for pitch_type in available_pitches:
-                    subset = data[data["PitchType"] == pitch_type]
-                    rel_speeds = pd.to_numeric(subset["RelSpeed"], errors="coerce").dropna()
-
-                    if len(rel_speeds) > 1:
-                        try:
-                            density = simple_kde(rel_speeds.values, vel_range)
-                            ax.plot(vel_range, density, color=colors[pitch_type],
-                                    linewidth=2, label=pitch_type)
-                            ax.fill_between(vel_range, density, alpha=0.3, color=colors[pitch_type])
-                        except:
-                            # Fallback to histogram if KDE fails
-                            ax.hist(rel_speeds, bins=10, alpha=0.5, color=colors[pitch_type],
-                                    density=True, label=pitch_type)
-
-            ax.set_title(f"{display_name}: Velocity Distribution")
-            ax.set_xlabel("Rel Speed (mph)")
-            ax.set_ylabel("Density")
-            ax.legend(title="Pitch Type", fontsize=6, title_fontsize=7,
-                      loc="upper left", bbox_to_anchor=(1, 1))
-
+        # ── Arm angle release ─────────────────────────────────────────────────
         elif plot_type == "arm_angle":
             if not all(col in data.columns for col in ["RelSide", "RelHeight"]):
                 return ui.div("Release point data not available")
-            fig, ax = plt.subplots(figsize=(8, 6))
-
+            traces = []
+            shapes = []
             if "arm_angle_type" in data.columns:
-                available_angles = data["arm_angle_type"].dropna().unique()
-                colors = {angle: arm_angle_colors.get(angle, "#9C8975") for angle in available_angles}
-                for angle_type in available_angles:
-                    subset = data[data["arm_angle_type"] == angle_type]
-                    avg_angle = subset["arm_angle"].mean() if "arm_angle" in subset.columns else 0
-                    ax.scatter(subset["RelSide"], subset["RelHeight"], c=colors[angle_type],
-                               label=f"{angle_type} ({avg_angle:.1f}°)", s=15, alpha=0.7)
+                for g in data["arm_angle_type"].dropna().unique():
+                    sub = data[data["arm_angle_type"] == g]
+                    avg_angle = sub["arm_angle"].mean() if "arm_angle" in sub.columns else 0
+                    c = arm_angle_colors.get(g, "#9C8975")
+                    traces.append(go.Scatter(
+                        x=sub["RelSide"], y=sub["RelHeight"],
+                        mode="markers", name=f"{g} ({avg_angle:.1f}°)",
+                        marker=dict(color=c, size=6, opacity=0.7),
+                        hovertemplate=f"<b>{g}</b><br>Side: %{{x:.2f}}<br>Ht: %{{y:.2f}}<extra></extra>"))
             else:
-                available_pitches = data["PitchType"].unique()
-                colors = {p: pitch_colors_dict.get(p, "#9C8975") for p in available_pitches}
-                for pitch_type in available_pitches:
-                    subset = data[data["PitchType"] == pitch_type]
-                    ax.scatter(subset["RelSide"], subset["RelHeight"], c=colors[pitch_type],
-                               label=pitch_type, s=15, alpha=0.7)
+                for p in data["PitchType"].unique():
+                    sub = data[data["PitchType"] == p]
+                    c = pitch_colors_dict.get(p, "#9C8975")
+                    traces.append(go.Scatter(
+                        x=sub["RelSide"], y=sub["RelHeight"],
+                        mode="markers", name=p,
+                        marker=dict(color=c, size=6, opacity=0.7),
+                        hovertemplate=f"<b>{p}</b><br>Side: %{{x:.2f}}<br>Ht: %{{y:.2f}}<extra></extra>"))
+            if "shoulder_pos" in data.columns and not data["shoulder_pos"].isna().all():
+                sh = data["shoulder_pos"].iloc[0] / 12
+                shapes.append(dict(type="line", x0=-4, x1=4, y0=sh, y1=sh,
+                                   line=dict(color="#FF6B6B", width=1.5, dash="dash")))
+                traces.append(go.Scatter(x=[None], y=[None], mode="lines", name="Shoulder Ht",
+                                         line=dict(color="#FF6B6B", dash="dash")))
+            legend_title = "Arm Angle Type" if "arm_angle_type" in data.columns else "Pitch Type"
+            fig = go.Figure(traces)
+            fig.update_layout(**_plotly_layout(f"{pitcher}: Release Point by Arm Angle"),
+                              shapes=shapes)
+            fig.update_xaxes(**_axis_style("Rel Side (ft)"), range=[-4, 4])
+            fig.update_yaxes(**_axis_style("Rel Height (ft)"), range=[0, 8])
+            return _plotly_html(fig)
 
-            if "shoulder_pos" in data.columns:
-                shoulder_height_ft = data["shoulder_pos"].iloc[0] / 12 if not data["shoulder_pos"].isna().all() else 4.2
-                ax.axhline(y=shoulder_height_ft, color='red', linestyle='--', alpha=0.5, label='Shoulder Height')
-
-            ax.set_xlim(-4, 4)
-            ax.set_ylim(0, 8)
-            ax.set_title(f"{pitcher}: Release Point by Arm Angle")
-            ax.set_xlabel("Rel Side (ft)")
-            ax.set_ylabel("Rel Height (ft)")
-            ax.grid(True, alpha=0.3)
-            ax.legend(title="Arm Angle Type" if "arm_angle_type" in data.columns else "Pitch Type",
-                      fontsize=6, title_fontsize=7, loc="upper left", bbox_to_anchor=(1, 1))
-
+        # ── Location plots ────────────────────────────────────────────────────
         elif plot_type in ["location", "strike_swinging", "called_strike", "called_ball", "chase"]:
             if plot_type == "chase" and "Chase" in data.columns:
                 plot_data = data[data["Chase"] == 1]
@@ -2213,40 +2277,37 @@ def server(input, output, session):
             if not all(col in plot_data.columns for col in ["PlateLocSide", "PlateLocHeight", "PitchType"]):
                 return ui.div()
 
-            fig, ax = plt.subplots(figsize=(8, 6))
-            available_pitches = plot_data["PitchType"].unique()
-            colors = {p: pitch_colors_dict.get(p, "#9C8975") for p in available_pitches}
-            for pitch_type in available_pitches:
-                subset = plot_data[plot_data["PitchType"] == pitch_type]
-                ax.scatter(subset["PlateLocSide"], subset["PlateLocHeight"],
-                           c=colors[pitch_type], label=pitch_type, s=12, alpha=0.6)
+            traces = []
+            for p in plot_data["PitchType"].unique():
+                sub = plot_data[plot_data["PitchType"] == p]
+                c = pitch_colors_dict.get(p, "#9C8975")
+                traces.append(go.Scatter(
+                    x=sub["PlateLocSide"], y=sub["PlateLocHeight"],
+                    mode="markers", name=p,
+                    marker=dict(color=c, size=5, opacity=0.6),
+                    hovertemplate=f"<b>{p}</b><br>Side: %{{x:.2f}}<br>Ht: %{{y:.2f}}<extra></extra>"))
 
-            add_strike_zone(ax)
-            plate_y = 0.5
-            ax.plot([-7.5 / 12, 7.5 / 12], [plate_y, plate_y], color="b", linewidth=1)
-            ax.plot([-7.5 / 12, -7.25 / 12], [plate_y, plate_y + 0.15], color="b", linewidth=1)
-            ax.plot([7.5 / 12, 7.25 / 12], [plate_y, plate_y + 0.15], color="b", linewidth=1)
-            ax.plot([7.28 / 12, 0], [plate_y + 0.15, plate_y + 0.25], color="b", linewidth=1)
-            ax.plot([-7.28 / 12, 0], [plate_y + 0.15, plate_y + 0.25], color="b", linewidth=1)
+            # Strike zone rectangle
+            sz_shapes = [
+                dict(type="rect", x0=-0.85, x1=0.85, y0=1.6, y1=3.4,
+                     line=dict(color="#4A90D9", width=2), fillcolor="rgba(0,0,0,0)"),
+                # Home plate
+                dict(type="path",
+                     path="M -0.625 0.5 L 0.625 0.5 L 0.608 0.625 L 0 0.708 L -0.608 0.625 Z",
+                     line=dict(color="#4A90D9", width=1.5), fillcolor="rgba(0,0,0,0)"),
+            ]
 
-            ax.set_xlim(-3.5, 3.5)
-            ax.set_ylim(0, 5.5)
-            ax.set_yticks(np.arange(0, 5.5, 1))
-            ax.set_title(f"{pitcher}: {title}")
-            ax.set_xlabel("Hor Loc")
-            ax.set_ylabel("Vert Loc")
-            ax.legend(title="Pitch Type", fontsize=6, title_fontsize=7,
-                      loc="upper left", bbox_to_anchor=(1, 1))
+            fig = go.Figure(traces)
+            fig.update_layout(**_plotly_layout(f"{pitcher}: {title}"), shapes=sz_shapes)
+            fig.update_xaxes(**_axis_style("Hor Loc"), range=[-3.5, 3.5])
+            fig.update_yaxes(**_axis_style("Vert Loc"), range=[0, 5.5])
+            return _plotly_html(fig)
 
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png", bbox_inches="tight", dpi=90)
-        buf.seek(0)
-        plt.close(fig)
-        img_data = base64.b64encode(buf.read()).decode()
-        return ui.div(ui.h3(f"{display_name}: {title}"),
-                      ui.HTML(f'<img src="data:image/png;base64,{img_data}" style="max-width:100%;height:auto;">'))
+        return ui.div(f"Unknown plot type: {plot_type}")
 
     def create_tunneling_plot(plot_type):
+        import plotly.graph_objects as go
+
         data = filtered_data()
         view_mode = input.view_mode()
 
@@ -2261,107 +2322,75 @@ def server(input, output, session):
         if data.empty:
             return ui.div("No data available")
 
-        pitcher = display_name
-
-        # Only handle release_angles plot type
         if plot_type != "release_angles":
             return ui.div("Plot type not available")
 
-        # Define required columns
         required_cols = ["VertRelAngle", "HorzRelAngle", "PitchType"]
-
-        # Map alternative column names
-        alt_cols_map = {
-            "VertRelAngle": ["VerticalRelAngle", "VRA"],
-            "HorzRelAngle": ["HorizontalRelAngle", "HRA"]
-        }
-
-        # Check for required columns and find alternatives
-        available_cols = []
+        alt_cols_map = {"VertRelAngle": ["VerticalRelAngle", "VRA"],
+                        "HorzRelAngle": ["HorizontalRelAngle", "HRA"]}
         missing_cols = []
 
         for col in required_cols:
-            if col in data.columns:
-                available_cols.append(col)
-            else:
-                # Try alternative column names
-                found_alt = False
-                if col in alt_cols_map:
-                    for alt_col in alt_cols_map[col]:
-                        if alt_col in data.columns:
-                            # Rename the column for consistency
-                            data = data.rename(columns={alt_col: col})
-                            available_cols.append(col)
-                            found_alt = True
-                            break
-                if not found_alt:
+            if col not in data.columns:
+                found = False
+                for alt in alt_cols_map.get(col, []):
+                    if alt in data.columns:
+                        data = data.rename(columns={alt: col})
+                        found = True
+                        break
+                if not found:
                     missing_cols.append(col)
 
         if missing_cols:
             return ui.div(f"Missing required columns: {', '.join(missing_cols)}")
 
-        # Convert angle columns to numeric
-        angle_cols = ['VertRelAngle', 'HorzRelAngle']
-        for col in angle_cols:
-            if col in data.columns:
-                data[col] = pd.to_numeric(data[col], errors='coerce')
+        for col in ["VertRelAngle", "HorzRelAngle"]:
+            data[col] = pd.to_numeric(data[col], errors="coerce")
 
-        # Drop rows with missing data
-        data_clean = data.dropna(subset=['HorzRelAngle', 'VertRelAngle', 'PitchType'])
-
+        data_clean = data.dropna(subset=["HorzRelAngle", "VertRelAngle", "PitchType"])
         if data_clean.empty:
             return ui.div("No valid data for release angles plot")
 
-        fig, ax = plt.subplots(figsize=(8, 6))
-
-        # Get available pitch types and colors
-        available_pitches = data_clean["PitchType"].unique()
-        colors = {p: pitch_colors_dict.get(p, "#9C8975") for p in available_pitches}
-
-        x_col, y_col = "HorzRelAngle", "VertRelAngle"
-        title = "Release Angles (Tunneling)"
-        xlabel, ylabel = "Horizontal Release Angle", "Vertical Release Angle"
-
-        # Plot each pitch type
-        for pitch_type in available_pitches:
-            subset = data_clean[data_clean["PitchType"] == pitch_type]
-
-            if len(subset) < 2:
+        traces = []
+        for p in data_clean["PitchType"].unique():
+            sub = data_clean[data_clean["PitchType"] == p]
+            if len(sub) < 2:
                 continue
+            c = pitch_colors_dict.get(p, "#9C8975")
+            x = sub["HorzRelAngle"].values
+            y = sub["VertRelAngle"].values
 
-            x = subset[x_col].values
-            y = subset[y_col].values
+            traces.append(go.Scatter(
+                x=x, y=y, mode="markers", name=p,
+                marker=dict(color=c, size=5, opacity=0.35),
+                hovertemplate=f"<b>{p}</b><br>HorzAngle: %{{x:.2f}}<br>VertAngle: %{{y:.2f}}<extra></extra>"))
 
-            # Scatter plot
-            ax.scatter(x, y, c=colors[pitch_type], label=pitch_type, s=15, alpha=0.3)
+            ell = _ellipse_trace(x, y, c)
+            if ell:
+                traces.append(ell)
 
-            # Add confidence ellipse for tunneling analysis
-            if len(subset) >= 3:
-                confidence_ellipse(x, y, ax, colors[pitch_type], n_std=1.0,
-                                   alpha=0.3, linewidth=2, facecolor=colors[pitch_type])
+            # Mean marker
+            traces.append(go.Scatter(
+                x=[x.mean()], y=[y.mean()], mode="markers", name=f"{p} mean",
+                marker=dict(symbol="x", color=c, size=10, line=dict(width=2, color="#E8E8E8")),
+                showlegend=False,
+                hovertemplate=f"<b>{p} mean</b><br>HorzAngle: {x.mean():.2f}<br>VertAngle: {y.mean():.2f}<extra></extra>"))
 
-            # Mark the mean point
-            mean_x, mean_y = x.mean(), y.mean()
-            ax.scatter(mean_x, mean_y, marker='x', color=colors[pitch_type],
-                       s=100, linewidth=3, edgecolors='black')
+        shapes = [
+            dict(type="line", x0=data_clean["HorzRelAngle"].min() - 1,
+                 x1=data_clean["HorzRelAngle"].max() + 1, y0=0, y1=0,
+                 line=dict(color="#555555", width=1)),
+            dict(type="line", x0=0, x1=0,
+                 y0=data_clean["VertRelAngle"].min() - 1, y1=data_clean["VertRelAngle"].max() + 1,
+                 line=dict(color="#555555", width=1)),
+        ]
 
-        # Add origin lines
-        add_origin_lines(ax)
-
-        ax.set_title(f"{display_name}: {title}")
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.grid(True, alpha=0.3)
-        ax.legend(title="Pitch Type", fontsize=6, title_fontsize=7,
-                  loc="upper left", bbox_to_anchor=(1, 1))
-
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png", bbox_inches="tight", dpi=90)
-        buf.seek(0)
-        plt.close(fig)
-        img_data = base64.b64encode(buf.read()).decode()
-        return ui.div(ui.h3(f"{display_name}: {title}"),
-                      ui.HTML(f'<img src="data:image/png;base64,{img_data}" style="max-width:100%;height:auto;">'))
+        fig = go.Figure(traces)
+        fig.update_layout(**_plotly_layout(f"{display_name}: Release Angles (Tunneling)"),
+                          shapes=shapes)
+        fig.update_xaxes(**_axis_style("Horizontal Release Angle"))
+        fig.update_yaxes(**_axis_style("Vertical Release Angle"))
+        return _plotly_html(fig)
 
     def create_tunneling_metrics_table():
         data = filtered_data()
@@ -2961,8 +2990,7 @@ def server(input, output, session):
         lhh_pct = (lhh["PitchType"].value_counts(normalize=True) * 100).reindex(all_types, fill_value=0)
         rhh_pct = (rhh["PitchType"].value_counts(normalize=True) * 100).reindex(all_types, fill_value=0)
 
-        max_pct = max(lhh_pct.max(), rhh_pct.max(), 1)
-        tick_max = int(np.ceil(max_pct / 10) * 10) + 10
+        tick_max = 100
 
         traces = []
         for pitch in all_types:
