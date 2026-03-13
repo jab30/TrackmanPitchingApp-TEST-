@@ -385,21 +385,21 @@ _pitching_plus_df = _load_pitching_plus_csv()
 
 # CSV stat col → display label + lower_is_better flag
 _PITCHING_PLUS_COLS = {
-    "wOBA":        ("wOBA",          True),
-    "xWOBA":       ("xwOBA",         True),
-    "K%":          ("K%",            False),
-    "BB%":         ("BB%",           True),
-    "Miss%":       ("Whiff%",        False),
-    "CSW%":        ("CSW%",          False),
-    "Chase%":      ("O-Swing%",      False),
-    "Swing%":      ("Swing%",        False),
-    "iZ-Contact%": ("Z-Contact%",    True),
-    "vFB":         ("Fastball Velo", False),
-    "Barrel%":     ("Barrel%",       True),
-    "HardHit%":    ("HardHit%",      True),
-    "ExitVel":     ("AverageEV",     True),
-    "AdjGB%":      ("GB%",           False),
-    "SwStrk%":     ("SwStr%",        False),
+    "wOBA":          ("wOBA",          True),
+    "xSLG_computed": ("xSLG",          True),   # computed from TrackMan via model
+    "K%":            ("K%",            False),
+    "BB%":           ("BB%",           True),
+    "Miss%":         ("Whiff%",        False),
+    "CSW%":          ("CSW%",          False),
+    "Chase%":        ("O-Swing%",      False),
+    "Swing%":        ("Swing%",        False),
+    "iZ-Contact%":   ("Z-Contact%",    True),
+    "vFB":           ("Fastball Velo", False),
+    "Barrel%":       ("Barrel%",       True),
+    "HardHit%":      ("HardHit%",      True),
+    "ExitVel":       ("AverageEV",     True),
+    "AdjGB%":        ("GB%",           False),
+    "SwStrk%":       ("SwStr%",        False),
 }
 
 def _parse_pct_value(s):
@@ -821,139 +821,203 @@ def simple_kde(data, x_range, bandwidth=None):
     density = density / (len(data) * bandwidth * np.sqrt(2 * np.pi))
     return density
 
-def _pct_to_color(pct: int, lower_is_better: bool) -> str:
-    """Return fill color matching Savant-style: blue=bad, white=mid, red=good."""
-    # Adjust so that 'good' always maps to red
+# ── xSLG model (loaded once at startup) ──────────────────────────────────────
+_xslg_model = None
+try:
+    import pickle as _pickle
+    _xslg_paths = [
+        "/Volumes/Projects/xslg_model.pkl",
+        "xslg_model.pkl",
+        os.path.join(os.path.dirname(__file__), "xslg_model.pkl"),
+    ]
+    for _p in _xslg_paths:
+        if os.path.exists(_p):
+            with open(_p, "rb") as _f:
+                _xslg_model = _pickle.load(_f)
+            print(f"xSLG model loaded from {_p}")
+            break
+    if _xslg_model is None:
+        print("xSLG model not found — xSLG will show N/A")
+except Exception as _e:
+    print(f"xSLG model load error: {_e}")
+
+def _predict_xslg(exit_speeds, launch_angles):
+    """Run xSLG model on arrays of EV+LA. Returns array of predictions."""
+    if _xslg_model is None:
+        return None
+    try:
+        ev = np.array(exit_speeds, dtype=float)
+        la = np.array(launch_angles, dtype=float)
+        mask = ~(np.isnan(ev) | np.isnan(la))
+        if mask.sum() == 0:
+            return None
+        X = np.column_stack([ev[mask], la[mask]])
+        preds = _xslg_model.predict(X)
+        result = np.full(len(ev), np.nan)
+        result[mask] = preds
+        return result
+    except Exception as e:
+        print(f"xSLG predict error: {e}")
+        return None
+
+# ── Savant-style horizontal bar chart ─────────────────────────────────────────
+def _bar_color(pct: int, lower_is_better: bool) -> str:
+    """Blue=bad → grey=avg → red=good, same as Savant/R hitter app."""
     effective = (100 - pct) if lower_is_better else pct
     effective = max(0, min(100, effective))
-    if effective < 50:
-        t = effective / 50.0          # 0→1
-        r = int(30  + (230 - 30)  * t)
-        g = int(100 + (230 - 100) * t)
-        b = int(200 + (230 - 200) * t)
+    if effective < 33:
+        t = effective / 33.0
+        r = int(58  + (140 - 58)  * t)
+        g = int(112 + (170 - 112) * t)
+        b = int(184 + (195 - 184) * t)
+    elif effective < 67:
+        t = (effective - 33) / 34.0
+        r = int(140 + (210 - 140) * t)
+        g = int(170 + (185 - 170) * t)
+        b = int(195 + (195 - 195) * t)
     else:
-        t = (effective - 50) / 50.0   # 0→1
-        r = int(230 + (188 - 230) * t)
-        g = int(230 + (0   - 230) * t)
-        b = int(230 + (0   - 230) * t)
+        t = (effective - 67) / 33.0
+        r = int(210 + (188 - 210) * t)
+        g = int(185 + (0   - 185) * t)
+        b = int(195 + (0   - 195) * t)
     return f"rgb({r},{g},{b})"
 
-def _arc_path(cx, cy, r, pct):
-    """SVG arc path for a filled circle showing 0–pct% of the arc (clockwise from top)."""
-    if pct <= 0:
-        return ""
-    if pct >= 100:
-        # Full circle as two arcs
-        return (f"M {cx},{cy-r} A {r},{r} 0 1,1 {cx-0.001},{cy-r} Z")
-    angle = (pct / 100) * 360
-    rad = np.radians(angle - 90)
-    x = cx + r * np.cos(rad)
-    y = cy + r * np.sin(rad)
-    large = 1 if angle > 180 else 0
-    return f"M {cx},{cy} L {cx},{cy-r} A {r},{r} 0 {large},1 {x:.3f},{y:.3f} Z"
-
-def make_savant_circles_html(row, title: str) -> str:
+def make_savant_bars_html(row, title: str) -> str:
     """
-    Build a Savant-style percentile circle grid from a pitching+ CSV row.
-    Returns raw HTML string.
+    Build a Baseball Savant-style horizontal percentile bar chart.
+    Matches the R hitter app aesthetic: dark background, coloured bars,
+    bold percentile bubble on the right end of each bar, raw value at far right.
     """
-    COLS = list(_PITCHING_PLUS_COLS.items())   # [(csv_col, (label, lower_is_better)), ...]
-    n = len(COLS)
+    COLS = list(_PITCHING_PLUS_COLS.items())
 
-    # ── layout ──────────────────────────────────────────────────
-    per_row    = 5
-    cell_w     = 110
-    cell_h     = 100
-    r_outer    = 34
-    r_inner    = 24
-    cols_count = per_row
-    rows_count = int(np.ceil(n / per_row))
-    total_w    = cols_count * cell_w
-    total_h    = rows_count * cell_h + 36   # +36 for title bar
+    # ── SVG layout constants ────────────────────────────────────────────────
+    W          = 700        # total SVG width
+    LEFT_PAD   = 110        # space for stat label
+    RIGHT_PAD  = 60         # space for raw value
+    BAR_AREA   = W - LEFT_PAD - RIGHT_PAD
+    ROW_H      = 34
+    BAR_H      = 16
+    HEADER_H   = 48
+    FOOTER_H   = 28
+    n          = len(COLS)
+    total_h    = HEADER_H + n * ROW_H + FOOTER_H
+
+    # Guideline x positions (Poor=20, Average=50, Great=80 percentile)
+    def bar_x(pct):
+        return LEFT_PAD + (pct / 100) * BAR_AREA
 
     parts = []
     parts.append(
-        f'<div style="width:100%;overflow-x:auto;">'
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {total_w} {total_h}" '
-        f'style="width:100%;max-width:{total_w}px;display:block;margin:0 auto;background:#1A1A1A;">'
+        f'<div style="width:100%;overflow-x:auto;background:#1A1A1A;border-radius:6px;padding:4px 0;">'
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {total_h}" '
+        f'style="width:100%;max-width:{W}px;display:block;margin:0 auto;font-family:Barlow,Barlow Condensed,sans-serif;">'
     )
 
-    # Title bar
+    # ── Title ───────────────────────────────────────────────────────────────
     parts.append(
-        f'<text x="{total_w/2}" y="24" text-anchor="middle" '
+        f'<text x="{W/2}" y="22" text-anchor="middle" '
         f'font-family="Barlow Condensed,sans-serif" font-size="15" font-weight="700" '
         f'fill="#FDBB30" letter-spacing="1">{title} — Percentile Rankings (vs D1)</text>'
     )
 
+    # ── Column headers: Poor / Average / Great ──────────────────────────────
+    for label, pct_pos, anchor, col in [
+        ("Poor",    20, "middle", "#6B9EC8"),
+        ("Average", 50, "middle", "#AAAAAA"),
+        ("Great",   80, "middle", "#C84040"),
+    ]:
+        tx = bar_x(pct_pos)
+        parts.append(
+            f'<text x="{tx}" y="{HEADER_H - 10}" text-anchor="{anchor}" '
+            f'font-family="Barlow Condensed,sans-serif" font-size="12" font-weight="700" fill="{col}">'
+            f'{label}</text>'
+        )
+        # faint vertical guideline through all rows
+        parts.append(
+            f'<line x1="{tx}" y1="{HEADER_H}" x2="{tx}" y2="{HEADER_H + n * ROW_H}" '
+            f'stroke="#333" stroke-width="1" stroke-dasharray="3,3"/>'
+        )
+
+    # ── Rows ─────────────────────────────────────────────────────────────────
     for i, (csv_col, (label, lower_is_better)) in enumerate(COLS):
-        col_i = i % per_row
-        row_i = i // per_row
-        cx = col_i * cell_w + cell_w // 2
-        cy = row_i * cell_h + cell_h // 2 + 36
+        y_top   = HEADER_H + i * ROW_H
+        bar_cy  = y_top + ROW_H / 2
+        bar_y   = bar_cy - BAR_H / 2
 
         if row is not None and csv_col in row.index:
             val_str, pct = _parse_pct_value(row[csv_col])
         else:
             val_str, pct = None, None
 
-        # background donut ring (dark grey)
+        # Alternating row background
+        if i % 2 == 0:
+            parts.append(
+                f'<rect x="0" y="{y_top}" width="{W}" height="{ROW_H}" '
+                f'fill="#1E1E1E" rx="0"/>'
+            )
+
+        # Stat label (left)
         parts.append(
-            f'<circle cx="{cx}" cy="{cy}" r="{r_outer}" '
-            f'fill="none" stroke="#3A3A3A" stroke-width="{r_outer - r_inner}"/>'
+            f'<text x="{LEFT_PAD - 8}" y="{bar_cy + 5}" text-anchor="end" '
+            f'font-family="Barlow,sans-serif" font-size="12" font-weight="500" fill="#CCCCCC">'
+            f'{label}</text>'
+        )
+
+        # Raw value (right)
+        display_val = val_str if val_str else "—"
+        parts.append(
+            f'<text x="{W - RIGHT_PAD + 8}" y="{bar_cy + 5}" text-anchor="start" '
+            f'font-family="Barlow Condensed,sans-serif" font-size="12" font-weight="600" fill="#DDDDDD">'
+            f'{display_val}</text>'
+        )
+
+        # Full background bar (grey track)
+        parts.append(
+            f'<rect x="{LEFT_PAD}" y="{bar_y}" width="{BAR_AREA}" height="{BAR_H}" '
+            f'fill="#2C2C2C" rx="3"/>'
         )
 
         if pct is not None:
-            color = _pct_to_color(pct, lower_is_better)
-            arc   = _arc_path(cx, cy, (r_outer + r_inner) / 2, pct)
-            stroke_w = r_outer - r_inner
-            # Draw arc as thick stroked path (donut segment)
-            # Use clip-circle approach: draw full-colored circle, mask with arc
-            # Simpler: draw arc as stroke on mid-radius
-            mid_r = (r_outer + r_inner) / 2
-            if pct >= 100:
-                parts.append(
-                    f'<circle cx="{cx}" cy="{cy}" r="{mid_r:.1f}" '
-                    f'fill="none" stroke="{color}" stroke-width="{stroke_w}"/>'
-                )
-            else:
-                angle_deg = (pct / 100) * 360
-                circ = 2 * np.pi * mid_r
-                dash = (pct / 100) * circ
-                gap  = circ - dash
-                # rotate so arc starts at top (−90°)
-                parts.append(
-                    f'<circle cx="{cx}" cy="{cy}" r="{mid_r:.1f}" '
-                    f'fill="none" stroke="{color}" stroke-width="{stroke_w}" '
-                    f'stroke-dasharray="{dash:.2f} {gap:.2f}" '
-                    f'stroke-dashoffset="{circ/4:.2f}" '
-                    f'transform="rotate(-90 {cx} {cy})"/>'
-                )
-            # percentile number inside
+            color     = _bar_color(pct, lower_is_better)
+            fill_w    = (pct / 100) * BAR_AREA
+            bubble_cx = LEFT_PAD + fill_w
+            bubble_r  = 11
+
+            # Filled bar
             parts.append(
-                f'<text x="{cx}" y="{cy+5}" text-anchor="middle" '
-                f'font-family="Barlow Condensed,sans-serif" font-size="14" font-weight="700" '
-                f'fill="#FFFFFF">{pct}</text>'
-            )
-        else:
-            parts.append(
-                f'<text x="{cx}" y="{cy+5}" text-anchor="middle" '
-                f'font-family="Barlow Condensed,sans-serif" font-size="11" '
-                f'fill="#888">N/A</text>'
+                f'<rect x="{LEFT_PAD}" y="{bar_y}" width="{fill_w:.1f}" height="{BAR_H}" '
+                f'fill="{color}" rx="3"/>'
             )
 
-        # stat value below circle
-        display_val = val_str if val_str else "—"
-        parts.append(
-            f'<text x="{cx}" y="{cy + r_outer + 13}" text-anchor="middle" '
-            f'font-family="Barlow,sans-serif" font-size="10" fill="#BBBBBB">{display_val}</text>'
-        )
-        # label below value
-        parts.append(
-            f'<text x="{cx}" y="{cy + r_outer + 24}" text-anchor="middle" '
-            f'font-family="Barlow Condensed,sans-serif" font-size="10" font-weight="600" '
-            f'fill="#FDBB30" letter-spacing="0.5">{label}</text>'
-        )
+            # Percentile bubble at bar end
+            parts.append(
+                f'<circle cx="{bubble_cx:.1f}" cy="{bar_cy:.1f}" r="{bubble_r}" fill="{color}"/>'
+            )
+            # Bubble text
+            font_sz = "10" if pct >= 100 else "11"
+            parts.append(
+                f'<text x="{bubble_cx:.1f}" y="{bar_cy + 4:.1f}" text-anchor="middle" '
+                f'font-family="Barlow Condensed,sans-serif" font-size="{font_sz}" font-weight="700" '
+                f'fill="white">{pct}</text>'
+            )
+        else:
+            # N/A label in track
+            parts.append(
+                f'<text x="{LEFT_PAD + BAR_AREA/2}" y="{bar_cy + 4:.1f}" text-anchor="middle" '
+                f'font-family="Barlow,sans-serif" font-size="10" fill="#666">N/A</text>'
+            )
+
+    # ── Footer dashes ───────────────────────────────────────────────────────
+    fy = HEADER_H + n * ROW_H + 16
+    parts.append(
+        f'<line x1="{LEFT_PAD}" y1="{fy}" x2="{W - RIGHT_PAD}" y2="{fy}" '
+        f'stroke="#3A3A3A" stroke-width="1"/>'
+    )
+    parts.append(
+        f'<text x="{W/2}" y="{fy + 12}" text-anchor="middle" '
+        f'font-family="Barlow,sans-serif" font-size="9" fill="#666">'
+        f'Percentiles vs D1 pitchers | pitching+ data</text>'
+    )
 
     parts.append("</svg></div>")
     return "".join(parts)
@@ -1797,16 +1861,33 @@ def server(input, output, session):
         else:
             summary["wOBA"] = 0.0
 
-        # ── Savant-style percentile circles ─────────────────────────────────
-        if not view_mode:
-            pp_row     = get_pitching_plus_row(display_name)
-            circle_title = display_name
-        else:
-            # Team view: no single-pitcher row — skip circles
-            pp_row     = None
-            circle_title = "KEN_OWL Team"
+        # ── xSLG: compute from TrackMan BIP for this pitcher ────────────────
+        xslg_val = None
+        if not view_mode and not in_play.empty and all(c in in_play.columns for c in ["ExitSpeed","Angle"]):
+            ev = pd.to_numeric(in_play["ExitSpeed"], errors="coerce")
+            la = pd.to_numeric(in_play["Angle"],     errors="coerce")
+            preds = _predict_xslg(ev.values, la.values)
+            if preds is not None:
+                valid = preds[~np.isnan(preds)]
+                if len(valid) > 0:
+                    xslg_val = round(float(valid.mean()), 3)
 
-        circles_html = make_savant_circles_html(pp_row, circle_title)
+        # ── Savant-style percentile bar chart ─────────────────────────────
+        if not view_mode:
+            pp_row       = get_pitching_plus_row(display_name)
+            chart_title  = display_name
+        else:
+            pp_row       = None
+            chart_title  = "KEN_OWL Team"
+
+        # Inject xSLG into the row if we have it (replaces xWOBA slot visually)
+        # We add it as a synthetic column so make_savant_bars_html can pick it up
+        if pp_row is not None and xslg_val is not None:
+            pp_row = pp_row.copy()
+            # Store formatted like CSV: ".312" with no percentile (shows value, N/A for pct)
+            pp_row["xSLG_computed"] = f"{xslg_val:.3f}"
+
+        bars_html = make_savant_bars_html(pp_row, chart_title)
 
         # ── Traditional summary table (kept below circles) ─────────────────
         table_id = "summary_stats_table_" + str(hash(display_name) % 10000)
@@ -1816,7 +1897,7 @@ def server(input, output, session):
             num_pitchers = data['Pitcher'].nunique() if 'Pitcher' in data.columns else 0
             header_text = f"KEN_OWL Team Stats ({num_pitchers} Pitchers)"
 
-        html  = circles_html
+        html  = bars_html
         html += f'<div style="margin:12px 0 6px 0;font-family:\'Barlow Condensed\',sans-serif;font-size:13px;font-weight:700;color:#FDBB30;letter-spacing:1px;text-transform:uppercase;">{header_text}</div>'
         html += f'<table id="{table_id}" style="border-collapse:collapse;width:100%;font-size:13px;">'
         html += '<thead><tr>'
