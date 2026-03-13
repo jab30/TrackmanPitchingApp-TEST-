@@ -773,19 +773,19 @@ stat_ranges = {
 # Gradient coloring function
 def get_performance_color(value, pitch_type, metric):
     if pd.isna(value):
-        return "background-color: #f8f9fa; color: #333;"
+        return "background-color: #2c2c2c; color: #E8E8E8;"
 
     if metric == 'LaunchAng':
         if -190 <= value <= 12:
             return "background-color: #dc3545; color: white; font-weight: bold;"
         elif 12 < value <= 18:
-            return "background-color: #f8f9fa; color: #333;"
+            return f"background-color: rgb(94, 87, 87); color: #E8E8E8;"
         elif 25 <= value <= 31:
             return "background-color: #007bff; color: white; font-weight: bold;"
         elif value >= 40:
             return "background-color: #dc3545; color: white; font-weight: bold;"
         else:
-            return "background-color: #f8f9fa; color: #333;"
+            return f"background-color: rgb(94, 87, 87); color: #E8E8E8;"
 
     if metric == 'ExitVel':
         min_val, max_val = 81.5, 90
@@ -812,7 +812,7 @@ def get_performance_color(value, pitch_type, metric):
             if metric in default_ranges:
                 min_val, max_val = default_ranges[metric]
             else:
-                return "background-color: #f8f9fa; color: #333;"
+                return "background-color: #2c2c2c; color: #E8E8E8;"
 
         normalized = (value - min_val) / (max_val - min_val) if max_val > min_val else 0.5
         normalized = max(0, min(1, normalized))
@@ -876,7 +876,7 @@ def get_percentile_color(value, percentile, stat_name):
         CSS style string for the cell
     """
     if pd.isna(value) or pd.isna(percentile):
-        return "background-color: #f8f9fa; color: #333;"
+        return "background-color: #2c2c2c; color: #E8E8E8;"
 
     # Stats where LOWER is better
     lower_is_better = ['BB%', 'FIP', 'Barrel%', 'HardHit%', 'BAA', 'wOBA']
@@ -927,7 +927,7 @@ def format_summary_stat(col, value):
 def get_summary_stat_color(value, stat_name):
     """Color code summary stats based on typical ranges"""
     if pd.isna(value):
-        return "background-color: #f8f9fa; color: #333;"
+        return "background-color: #2c2c2c; color: #E8E8E8;"
 
     # Define ranges: (min, max, lower_is_better)
     stat_ranges = {
@@ -942,7 +942,7 @@ def get_summary_stat_color(value, stat_name):
 
     # Check if stat_name is valid FIRST
     if stat_name not in stat_ranges:
-        return "background-color: #f8f9fa; color: #333;"
+        return "background-color: #2c2c2c; color: #E8E8E8;"
 
     # Get the stat range info
     min_val, max_val, lower_is_better = stat_ranges[stat_name]
@@ -1560,8 +1560,19 @@ app_ui = ui.page_sidebar(
             ui.input_select("pitcher_id", "Select Pitcher",
                             {"": "— choose a pitcher —", **{p: p for p in all_pitchers}})
         ),
-        ui.input_date_range("date_range", "Select Date Range",
-                            start=min_date, end=max_date, min=min_date, max=max_date),
+        ui.input_switch("season_lock", "2026 Season Data", value=False),
+        ui.panel_conditional(
+            "!input.season_lock",
+            ui.input_date_range("date_range", "Select Date Range",
+                                start=min_date, end=max_date, min=min_date, max=max_date),
+        ),
+        ui.panel_conditional(
+            "input.season_lock",
+            ui.div(
+                ui.HTML('<span style="color:#FDBB30;font-size:0.78rem;font-weight:600;">📅 2026 Season: Feb 13 – latest data</span>'),
+                style="padding:4px 0 8px 0;"
+            )
+        ),
         ui.input_selectize("batter_hand_id", "Select Batter Hand",
                            unique_batter_sides, selected=unique_batter_sides, multiple=True),
         ui.input_radio_buttons("movement_color_by", "Color Movement Plot By:",
@@ -1605,7 +1616,14 @@ app_ui = ui.page_sidebar(
     ui.navset_tab(
         ui.nav_panel("Everything",
             ui.div(
-                ui.div("Summary Stats", class_="section-card-title"),
+                ui.div(
+                    ui.div("Summary Stats", class_="section-card-title", style="display:inline-block;"),
+                    ui.input_action_button(
+                        "toggle_splits", "⇔ Splits",
+                        style="float:right;margin-top:-2px;padding:3px 10px;font-size:0.75rem;font-family:'Barlow Condensed',sans-serif;font-weight:700;background:#2c2c2c;color:#FDBB30;border:1px solid #FDBB30;border-radius:4px;cursor:pointer;letter-spacing:0.05em;"
+                    ),
+                    style="overflow:hidden;"
+                ),
                 ui.output_ui("everything_summary_stats_table"),
                 class_="section-card"
             ),
@@ -1720,10 +1738,31 @@ app_ui = ui.page_sidebar(
 
 # Server
 def server(input, output, session):
+    # ── Season lock: auto-update date range when toggled ──────────────────────
+    @reactive.effect
+    def _handle_season_lock():
+        if input.season_lock():
+            season_start = date(2026, 2, 13)
+            # max_date is the last date in data
+            ui.update_date_range("date_range", start=season_start, end=max_date)
+
+    # ── Splits toggle state ─────────────────────────────────────────────────
+    show_splits = reactive.Value(False)
+
+    @reactive.effect
+    @reactive.event(input.toggle_splits)
+    def _toggle_splits():
+        show_splits.set(not show_splits())
+
     @reactive.Calc
     def filtered_data():
         view_mode = input.view_mode()
-        date_range = input.date_range()
+        if input.season_lock():
+            start_date = pd.to_datetime(date(2026, 2, 13))
+            end_date   = pd.to_datetime(max_date)
+            date_range = (date(2026, 2, 13), max_date)
+        else:
+            date_range = input.date_range()
         batter_hands = input.batter_hand_id()
 
         # Start with KEN_OWL team data
@@ -1747,12 +1786,29 @@ def server(input, output, session):
         return data
 
     @reactive.Calc
+    def filtered_data_lhh():
+        data = filtered_data()
+        if "BatterSide" in data.columns:
+            return data[data["BatterSide"] == "Left"].copy()
+        return data
+
+    @reactive.Calc
+    def filtered_data_rhh():
+        data = filtered_data()
+        if "BatterSide" in data.columns:
+            return data[data["BatterSide"] == "Right"].copy()
+        return data
+
+    @reactive.Calc
     def leaderboard_data():
         # First filter for KEN_OWL pitchers
         data = df[df["PitcherTeam"] == "KEN_OWL"].copy()
 
         # Then apply date range filter if specified
-        selected_dates = input.date_range()
+        if input.season_lock():
+            selected_dates = (date(2026, 2, 13), max_date)
+        else:
+            selected_dates = input.date_range()
         if selected_dates and "Date" in data.columns:
             start_date = pd.to_datetime(selected_dates[0])
             end_date = pd.to_datetime(selected_dates[1])
@@ -1911,12 +1967,18 @@ def server(input, output, session):
         html += f'<script>setTimeout(() => makeSortable("{table_id}"), 100);</script>'
         return ui.HTML(html)
 
-    def create_summary_stats_table():
+    def create_summary_stats_table(override_data=None, override_title=None):
         """Create a summary table with overall pitcher stats (K%, BB%, FIP, etc.)"""
-        data = filtered_data()
         view_mode = input.view_mode()
 
-        if view_mode:
+        if override_data is not None:
+            data = override_data
+        else:
+            data = filtered_data()
+
+        if override_title is not None:
+            display_name = override_title
+        elif view_mode:
             display_name = "KEN_OWL Team"
         else:
             pitcher = input.pitcher_id()
@@ -2953,7 +3015,7 @@ def server(input, output, session):
 
         def get_consistency_color(value, col_name, is_plate_metric=False):
             if pd.isna(value) or value == 0:
-                return "background-color: #f8f9fa; color: #333;"
+                return "background-color: #2c2c2c; color: #E8E8E8;"
 
             # For plate location metrics, HIGHER is better (more deception)
             if is_plate_metric:
@@ -3600,8 +3662,50 @@ def server(input, output, session):
     # Table outputs
     @output
     @render.ui
-    def everything_summary_stats_table():  # ADD THIS
-        return create_summary_stats_table()
+    def everything_summary_stats_table():
+        if show_splits():
+            view_mode = input.view_mode()
+            if view_mode:
+                base_title = "KEN_OWL Team"
+            else:
+                pitcher = input.pitcher_id()
+                base_title = pitcher if pitcher else "Pitcher"
+
+            lhh_data = filtered_data_lhh()
+            rhh_data = filtered_data_rhh()
+
+            lhh_html_raw = create_summary_stats_table(
+                override_data=lhh_data,
+                override_title=f"{base_title} vs LHH ({len(lhh_data)} pitches)"
+            )
+            rhh_html_raw = create_summary_stats_table(
+                override_data=rhh_data,
+                override_title=f"{base_title} vs RHH ({len(rhh_data)} pitches)"
+            )
+
+            # Extract the HTML string from ui.HTML objects
+            lhh_str = lhh_html_raw.get_html_string() if hasattr(lhh_html_raw, 'get_html_string') else str(lhh_html_raw)
+            rhh_str = rhh_html_raw.get_html_string() if hasattr(rhh_html_raw, 'get_html_string') else str(rhh_html_raw)
+
+            combined = ui.div(
+                ui.row(
+                    ui.column(6,
+                        ui.div(
+                            ui.HTML('<div style="text-align:center;color:#6B9EC8;font-family:Barlow Condensed,sans-serif;font-size:0.8rem;font-weight:700;letter-spacing:0.1em;padding:4px 0 6px;">VS LEFT-HANDED BATTERS</div>'),
+                            lhh_html_raw,
+                        )
+                    ),
+                    ui.column(6,
+                        ui.div(
+                            ui.HTML('<div style="text-align:center;color:#C84040;font-family:Barlow Condensed,sans-serif;font-size:0.8rem;font-weight:700;letter-spacing:0.1em;padding:4px 0 6px;">VS RIGHT-HANDED BATTERS</div>'),
+                            rhh_html_raw,
+                        )
+                    ),
+                ),
+            )
+            return combined
+        else:
+            return create_summary_stats_table()
     @output
     @render.ui
     def everything_pitch_metrics_table():
