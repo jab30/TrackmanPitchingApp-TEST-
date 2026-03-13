@@ -2208,11 +2208,20 @@ def server(input, output, session):
                     if len(sub) > 1:
                         density = simple_kde(sub.values, vel_range)
                         c = pitch_colors_dict.get(p, "#9C8975")
+                        # Convert any color to rgba with 0.25 alpha
+                        if c.startswith("#") and len(c) == 7:
+                            r = int(c[1:3], 16)
+                            g_val = int(c[3:5], 16)
+                            b_val = int(c[5:7], 16)
+                            fill_c = f"rgba({r},{g_val},{b_val},0.25)"
+                        elif c.startswith("rgb("):
+                            fill_c = c.replace("rgb(", "rgba(").replace(")", ",0.25)")
+                        else:
+                            fill_c = "rgba(150,150,150,0.25)"
                         traces.append(go.Scatter(
                             x=vel_range, y=density, mode="lines", name=p,
                             line=dict(color=c, width=2),
-                            fill="tozeroy", fillcolor=c.replace(")", ",0.25)").replace("rgb", "rgba")
-                                       if c.startswith("rgb") else c + "40",
+                            fill="tozeroy", fillcolor=fill_c,
                             hovertemplate=f"<b>{p}</b><br>%{{x:.1f}} mph<extra></extra>"))
             fig = go.Figure(traces)
             fig.update_layout(**_plotly_layout(f"{display_name}: Velocity Distribution"))
