@@ -1327,28 +1327,29 @@ def _compute_plus_by_pitch(data: "pd.DataFrame") -> "pd.DataFrame":
 
 
 def _plus_color(value) -> str:
-    """Blue→#5e5757→red gradient for plus stats centred at 100."""
+    """Matches testheat.py plus_stat_cell_color: blue≤70 → mid=100 → red≥130."""
     try:
         v = float(value)
     except (TypeError, ValueError):
-        return "background-color: #2c2c2c; color: #E8E8E8;"
+        return "background-color: #2c2c2c; color: #E8E8E8; text-align: center;"
     lo, mid, hi = 70.0, 100.0, 130.0
-    v = max(lo, min(hi, v))
+    if v <= lo:
+        return "background-color: #2563eb; color: #ffffff; text-align: center; font-weight: bold;"
+    if v >= hi:
+        return "background-color: #dc2626; color: #ffffff; text-align: center; font-weight: bold;"
     if v <= mid:
         t = (v - lo) / (mid - lo)
-        r = int(0   + (94  - 0)   * t)
-        g = int(123 + (87  - 123) * t)
-        b = int(255 + (87  - 255) * t)
-        text = "#E8E8E8" if t > 0.4 else "white"
-        fw = "bold" if t < 0.25 else "normal"
+        r = int(37 + 218 * t)
+        g = int(99 + 156 * t)
+        b = int(235 + 20  * t)
+        text = "#000000" if t > 0.5 else "#ffffff"
     else:
         t = (v - mid) / (hi - mid)
-        r = int(94  + (220 - 94)  * t)
-        g = int(87  + (53  - 87)  * t)
-        b = int(87  + (69  - 87)  * t)
-        text = "#E8E8E8" if t < 0.6 else "white"
-        fw = "normal" if t < 0.75 else "bold"
-    return f"background-color: rgb({r},{g},{b}); color: {text}; font-weight: {fw};"
+        r = int(255 - 35  * t)
+        g = int(255 - 217 * t)
+        b = int(255 - 217 * t)
+        text = "#000000" if t < 0.5 else "#ffffff"
+    return f"background-color: rgb({r},{g},{b}); color: {text}; text-align: center;"
 
 
 # ── Savant-style horizontal bar chart ─────────────────────────────────────────
@@ -2438,7 +2439,7 @@ def server(input, output, session):
                         if not pd.isna(_mx):  parts_tt.append(f'Max: {_mx:.1f}')
                         if not pd.isna(_sd):  parts_tt.append(f'SD: {_sd:.1f}')
                         if parts_tt:
-                            tooltip = f' title="{" | ".join(parts_tt)}" style="cursor:help;"'
+                            tooltip = f' title="{" | ".join(parts_tt)}"'
                     border = '#2c2c2c' if is_total else '#ddd'
                     fw = 'bold' if is_total else 'normal'
                     html += f'<td{tooltip} style="border: 1px solid {border}; padding: 8px; text-align: center; font-weight: {fw}; {style}">{disp}</td>'
@@ -3761,7 +3762,7 @@ def server(input, output, session):
                         html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; background-color: #2c2c2c; color: #E8E8E8;">—</td>'
                     else:
                         style = _plus_color(value)
-                        html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; {style}">{value:.1f}</td>'
+                        html += f'<td style="border: 1px solid #ddd; padding: 8px; {style}">{value:.1f}</td>'
                 else:
                     formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(value) else str(value)
                     html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{formatted_value}</td>'
