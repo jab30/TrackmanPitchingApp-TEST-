@@ -1327,29 +1327,31 @@ def _compute_plus_by_pitch(data: "pd.DataFrame") -> "pd.DataFrame":
 
 
 def _plus_color(value) -> str:
-    """Matches testheat.py plus_stat_cell_color: blue≤70 → mid=100 → red≥130."""
+    """Dark-theme gradient matching the rest of the pitch metrics table.
+    blue(0,123,255) → #5e5757(94,87,87) → red(220,53,69), centred at 100 (lo=70, hi=130).
+    """
     try:
         v = float(value)
     except (TypeError, ValueError):
         return "background-color: #2c2c2c; color: #E8E8E8; text-align: center;"
     lo, mid, hi = 70.0, 100.0, 130.0
-    if v <= lo:
-        return "background-color: #2563eb; color: #ffffff; text-align: center; font-weight: bold;"
-    if v >= hi:
-        return "background-color: #dc2626; color: #ffffff; text-align: center; font-weight: bold;"
-    if v <= mid:
-        t = (v - lo) / (mid - lo)
-        r = int(37 + 218 * t)
-        g = int(99 + 156 * t)
-        b = int(235 + 20  * t)
-        text = "#000000" if t > 0.5 else "#ffffff"
+    normalized = (v - lo) / (hi - lo)
+    normalized = max(0.0, min(1.0, normalized))
+    if normalized < 0.5:
+        factor = normalized * 2
+        r = int(0   + (94  - 0)   * factor)
+        g = int(123 + (87  - 123) * factor)
+        b = int(255 + (87  - 255) * factor)
+        text = "white" if normalized < 0.2 else "#E8E8E8"
+        fw   = "bold"  if normalized < 0.3 else "normal"
     else:
-        t = (v - mid) / (hi - mid)
-        r = int(255 - 35  * t)
-        g = int(255 - 217 * t)
-        b = int(255 - 217 * t)
-        text = "#000000" if t < 0.5 else "#ffffff"
-    return f"background-color: rgb({r},{g},{b}); color: {text}; text-align: center;"
+        factor = (normalized - 0.5) * 2
+        r = int(94  + (220 - 94)  * factor)
+        g = int(87  + (53  - 87)  * factor)
+        b = int(87  + (69  - 87)  * factor)
+        text = "#E8E8E8" if normalized < 0.7 else "white"
+        fw   = "normal" if normalized < 0.7 else "bold"
+    return f"background-color: rgb({r},{g},{b}); color: {text}; font-weight: {fw}; text-align: center;"
 
 
 # ── Savant-style horizontal bar chart ─────────────────────────────────────────
@@ -2424,11 +2426,10 @@ def server(input, output, session):
                     is_nan = pd.isna(value)
                     if is_nan:
                         disp = '—'
-                        style = 'background-color: #2c2c2c; color: #E8E8E8;'
+                        bg_style = 'background-color: #2c2c2c; color: #E8E8E8;'
                     else:
                         disp = f"{value:.1f}"
-                        style = _plus_color(value)
-                    # Build tooltip with min/max/sd if available and not TOTAL
+                        bg_style = _plus_color(value)
                     tooltip = ''
                     if not is_total and not is_nan:
                         _mn  = row.get(f'{col}_min', np.nan)
@@ -2442,7 +2443,7 @@ def server(input, output, session):
                             tooltip = f' title="{" | ".join(parts_tt)}"'
                     border = '#2c2c2c' if is_total else '#ddd'
                     fw = 'bold' if is_total else 'normal'
-                    html += f'<td{tooltip} style="border: 1px solid {border}; padding: 8px; text-align: center; font-weight: {fw}; {style}">{disp}</td>'
+                    html += f'<td{tooltip} style="border: 1px solid {border}; padding: 8px; text-align: center !important; vertical-align: middle; font-weight: {fw}; {bg_style}">{disp}</td>'
                 else:
                     formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(value) else str(value)
                     if row['PitchType'] == 'TOTAL':
