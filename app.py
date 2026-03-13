@@ -364,8 +364,8 @@ all_pitchers = sorted(df[df["PitcherTeam"] == "KEN_OWL"]["Pitcher"].dropna().uni
 # ── Load pitching+ percentile CSV + build distributions ──────────────────────
 def _load_pitching_plus_csv():
     paths = [
-        "pitching_.csv",
-        os.path.join(os.path.dirname(__file__), "pitching_.csv"),
+        "pitching+.csv",
+        os.path.join(os.path.dirname(__file__), "pitching+.csv"),
     ]
     for p in paths:
         if os.path.exists(p):
@@ -376,8 +376,8 @@ def _load_pitching_plus_csv():
                 target = blocks[1] if len(blocks) > 1 else blocks[0]
                 return pd.read_csv(io.StringIO(target))
             except Exception as e:
-                print(f"pitching_.csv load error: {e}")
-    print("pitching_.csv not found — percentiles will be skipped.")
+                print(f"pitching+.csv load error: {e}")
+    print("pitching+.csv not found — percentiles will be skipped.")
     return pd.DataFrame()
 
 _pitching_plus_df = _load_pitching_plus_csv()
@@ -433,7 +433,7 @@ def _rank_percentile(value: float, dist_col: str) -> int | None:
 # CSV stat col → (display label, lower_is_better, dist_col_for_rank)
 _PITCHING_PLUS_COLS = {
     "wOBA":          ("wOBA",          True,  "wOBA"),
-    "xSLG_computed": ("xSLG",          True,  "wOBA"),
+    "xSLG_computed": ("xSLG*",         True,  "wOBA"),
     "K%":            ("K%",            False, "K%"),
     "BB%":           ("BB%",           True,  "BB%"),
     "Miss%":         ("Whiff%",        False, "Miss%"),
@@ -609,9 +609,12 @@ def make_savant_row_from_stats(computed: dict) -> pd.Series:
 
         pct_raw = _rank_percentile(float(val), dist_col)
         if pct_raw is None:
-            # For xSLG — no direct dist, leave N/A percentile
             row[csv_col] = f"{val:.3f}" if csv_col == "xSLG_computed" else f"{val}"
             continue
+
+        # Flip percentile for lower_is_better stats so bubble shows quality rank
+        pct_display = (101 - pct_raw) if lower_is_better else pct_raw
+        pct_display = max(1, min(100, pct_display))
 
         # Format value display
         if csv_col in ("wOBA", "xSLG_computed"):
@@ -623,7 +626,7 @@ def make_savant_row_from_stats(computed: dict) -> pd.Series:
         else:
             val_str = f"{val:.1f}%"
 
-        row[csv_col] = f"{val_str} ({pct_raw}%)"
+        row[csv_col] = f"{val_str} ({pct_display}%)"
 
     return pd.Series(row)
 
@@ -1059,9 +1062,8 @@ def _predict_xslg(exit_speeds, launch_angles):
 
 # ── Savant-style horizontal bar chart ─────────────────────────────────────────
 def _bar_color(pct: int, lower_is_better: bool) -> str:
-    """Blue=bad → grey=avg → red=good, same as Savant/R hitter app."""
-    effective = (100 - pct) if lower_is_better else pct
-    effective = max(0, min(100, effective))
+    """Blue=bad → grey=avg → red=good. pct is already the display percentile (flipped if needed)."""
+    effective = max(0, min(100, pct))
     if effective < 33:
         t = effective / 33.0
         r = int(58  + (140 - 58)  * t)
