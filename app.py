@@ -753,6 +753,7 @@ def simple_kde(data, x_range, bandwidth=None):
     return density
 
 KSU_CSS = """
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -2050,7 +2051,7 @@ def server(input, output, session):
                     showline=False, **kwargs)
 
     def _plotly_html(fig):
-        return ui.HTML(fig.to_html(full_html=False, include_plotlyjs="cdn",
+        return ui.HTML(fig.to_html(full_html=False, include_plotlyjs=False,
                                    config={"displayModeBar": False}))
 
     def _ellipse_trace(x, y, color, n_std=1.0):
@@ -3099,7 +3100,7 @@ def server(input, output, session):
             height=chart_height,
         )
 
-        html = fig.to_html(full_html=False, include_plotlyjs="cdn", config={"displayModeBar": False})
+        html = fig.to_html(full_html=False, include_plotlyjs=False, config={"displayModeBar": False})
         return ui.HTML(html)
 
     # Table outputs
