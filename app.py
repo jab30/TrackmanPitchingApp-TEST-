@@ -752,13 +752,304 @@ def simple_kde(data, x_range, bandwidth=None):
     density = density / (len(data) * bandwidth * np.sqrt(2 * np.pi))
     return density
 
+KSU_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&display=swap');
+
+/* ── Root tokens ─────────────────────────────────────────── */
+:root {
+  --ksu-gold:    #FDBB30;
+  --ksu-gold-dk: #D99A00;
+  --ksu-dark:    #1A1A1A;
+  --ksu-mid:     #242424;
+  --ksu-panel:   #2C2C2C;
+  --ksu-border:  #3A3A3A;
+  --ksu-text:    #E8E8E8;
+  --ksu-muted:   #999999;
+  --ksu-accent:  #FDBB30;
+  --radius:      6px;
+  --shadow:      0 2px 12px rgba(0,0,0,0.4);
+}
+
+/* ── Page & body ─────────────────────────────────────────── */
+body, .bslib-page-sidebar {
+  background: var(--ksu-dark) !important;
+  color: var(--ksu-text) !important;
+  font-family: 'Barlow', sans-serif !important;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+.bslib-sidebar-layout > .sidebar {
+  background: var(--ksu-mid) !important;
+  border-right: 1px solid var(--ksu-border) !important;
+  padding: 1rem 1rem 2rem !important;
+}
+
+/* Sidebar labels */
+.bslib-sidebar-layout .form-label,
+.bslib-sidebar-layout label,
+.bslib-sidebar-layout .control-label {
+  color: var(--ksu-muted) !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  margin-bottom: 4px !important;
+}
+
+/* Sidebar inputs */
+.bslib-sidebar-layout select,
+.bslib-sidebar-layout input[type="number"],
+.bslib-sidebar-layout input[type="text"],
+.bslib-sidebar-layout input[type="date"],
+.bslib-sidebar-layout .selectize-input {
+  background: var(--ksu-panel) !important;
+  border: 1px solid var(--ksu-border) !important;
+  color: var(--ksu-text) !important;
+  border-radius: var(--radius) !important;
+  font-size: 0.85rem !important;
+  padding: 6px 10px !important;
+}
+
+.bslib-sidebar-layout .selectize-dropdown {
+  background: var(--ksu-panel) !important;
+  border: 1px solid var(--ksu-border) !important;
+  color: var(--ksu-text) !important;
+}
+
+.bslib-sidebar-layout .selectize-dropdown .option:hover,
+.bslib-sidebar-layout .selectize-dropdown .option.active {
+  background: var(--ksu-gold) !important;
+  color: var(--ksu-dark) !important;
+}
+
+/* Switch */
+.bslib-sidebar-layout .form-check-input:checked {
+  background-color: var(--ksu-gold) !important;
+  border-color: var(--ksu-gold) !important;
+}
+
+/* Radio buttons */
+.bslib-sidebar-layout .form-check-label {
+  color: var(--ksu-text) !important;
+  font-size: 0.82rem !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-weight: 400 !important;
+}
+
+/* Sidebar divider section */
+.sidebar-leaderboard-section {
+  border-top: 1px solid var(--ksu-border);
+  margin-top: 18px;
+  padding-top: 14px;
+}
+
+.sidebar-leaderboard-section h4 {
+  color: var(--ksu-gold) !important;
+  font-family: 'Barlow Condensed', sans-serif !important;
+  font-size: 0.8rem !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  margin-bottom: 10px !important;
+}
+
+/* ── Header / branding ───────────────────────────────────── */
+.nest-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 0 14px;
+  border-bottom: 2px solid var(--ksu-gold);
+  margin-bottom: 18px;
+}
+
+.nest-header .nest-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 2.1rem;
+  font-weight: 800;
+  color: var(--ksu-gold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.nest-header .nest-subtitle {
+  font-size: 0.75rem;
+  color: var(--ksu-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-top: 2px;
+}
+
+.nest-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn-primary, .btn-default, .download-btn, button.btn {
+  background: var(--ksu-gold) !important;
+  color: var(--ksu-dark) !important;
+  border: none !important;
+  font-family: 'Barlow Condensed', sans-serif !important;
+  font-weight: 700 !important;
+  font-size: 0.8rem !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  border-radius: var(--radius) !important;
+  padding: 7px 16px !important;
+  transition: background 0.15s, transform 0.1s !important;
+}
+
+.btn-primary:hover, .btn-default:hover, button.btn:hover {
+  background: var(--ksu-gold-dk) !important;
+  transform: translateY(-1px);
+}
+
+/* ── Nav tabs ─────────────────────────────────────────────── */
+.nav-tabs {
+  border-bottom: 2px solid var(--ksu-border) !important;
+  gap: 2px;
+}
+
+.nav-tabs .nav-link {
+  font-family: 'Barlow Condensed', sans-serif !important;
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  color: var(--ksu-muted) !important;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 3px solid transparent !important;
+  padding: 8px 18px !important;
+  border-radius: 0 !important;
+  transition: color 0.15s, border-color 0.15s !important;
+}
+
+.nav-tabs .nav-link:hover {
+  color: var(--ksu-text) !important;
+  border-bottom-color: var(--ksu-border) !important;
+  background: transparent !important;
+}
+
+.nav-tabs .nav-link.active {
+  color: var(--ksu-gold) !important;
+  background: transparent !important;
+  border-bottom: 3px solid var(--ksu-gold) !important;
+}
+
+/* ── Section cards ───────────────────────────────────────── */
+.section-card {
+  background: var(--ksu-mid) !important;
+  border: 1px solid var(--ksu-border) !important;
+  border-radius: var(--radius) !important;
+  padding: 16px 18px !important;
+  margin-bottom: 16px !important;
+  box-shadow: var(--shadow) !important;
+}
+
+.section-card-title {
+  font-family: 'Barlow Condensed', sans-serif !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  color: var(--ksu-gold) !important;
+  margin-bottom: 12px !important;
+  padding-bottom: 8px !important;
+  border-bottom: 1px solid var(--ksu-border) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.section-card-title::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  background: var(--ksu-gold);
+  border-radius: 2px;
+}
+
+/* ── Tables ──────────────────────────────────────────────── */
+table {
+  background: var(--ksu-panel) !important;
+  border-collapse: collapse !important;
+}
+
+th {
+  background: #333 !important;
+  color: var(--ksu-gold) !important;
+  font-family: 'Barlow Condensed', sans-serif !important;
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  border: 1px solid var(--ksu-border) !important;
+  padding: 9px 10px !important;
+}
+
+th:hover {
+  background: #3c3c3c !important;
+}
+
+td {
+  border: 1px solid var(--ksu-border) !important;
+  color: var(--ksu-text) !important;
+  font-size: 0.84rem !important;
+}
+
+tr:hover td {
+  filter: brightness(1.08);
+}
+
+/* ── Plots ───────────────────────────────────────────────── */
+.plot-container img {
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow) !important;
+  max-width: 100% !important;
+}
+
+/* ── Main content area ───────────────────────────────────── */
+.bslib-sidebar-layout > .main {
+  background: var(--ksu-dark) !important;
+  padding: 16px 20px !important;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--ksu-dark); }
+::-webkit-scrollbar-thumb { background: var(--ksu-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ksu-muted); }
+
+/* ── Print ───────────────────────────────────────────────── */
+@media print {
+  .no-print { display: none !important; }
+  body { background: white !important; color: black !important; }
+}
+</style>
+"""
+
 app_ui = ui.page_sidebar(
     ui.sidebar(
+        # Logo inside sidebar at top
+        ui.div(
+            ui.img(
+                src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Kennesaw_State_Owls_logo.svg/1200px-Kennesaw_State_Owls_logo.svg.png",
+                style="height: 54px; display: block; margin: 0 auto 16px;"),
+            style="text-align:center;"
+        ),
         ui.input_switch("view_mode", "Team View", value=False),
         ui.panel_conditional(
             "!input.view_mode",
             ui.input_select("pitcher_id", "Select Pitcher",
-                            {"": "-- choose a pitcher --", **{p: p for p in all_pitchers}})
+                            {"": "— choose a pitcher —", **{p: p for p in all_pitchers}})
         ),
         ui.input_date_range("date_range", "Select Date Range",
                             start=min_date, end=max_date, min=min_date, max=max_date),
@@ -767,88 +1058,151 @@ app_ui = ui.page_sidebar(
         ui.input_radio_buttons("movement_color_by", "Color Movement Plot By:",
                                {"pitch_type": "Pitch Type", "arm_angle": "Arm Angle Type"},
                                selected="pitch_type"),
-        # Leaderboard controls
         ui.div(
-            ui.h4("Leaderboard Controls", style="margin-top: 20px; color: #333;"),
+            ui.div("Leaderboard Controls", class_="sidebar-leaderboard-section", style="color:#FDBB30;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;"),
             ui.input_select("leaderboard_pitch_type", "Filter by Pitch Type:",
                             {"TOTAL": "All Pitches (TOTAL)", **{pt: pt for pt in all_pitch_types if pt != "TOTAL"}},
                             selected="TOTAL"),
             ui.input_selectize("leaderboard_pitch_types_multi", "Include Pitch Types:",
                                all_pitch_types, selected=all_pitch_types, multiple=True),
             ui.input_numeric("min_pitches", "Minimum Pitch Count:", value=50, min=1, max=1000),
-            style="border-top: 1px solid #ddd; padding-top: 15px;"
+            class_="sidebar-leaderboard-section"
         ),
-        width=300  # Add width parameter for sidebar
-    ),  # This closes ui.sidebar
+        width=270
+    ),
+
+    # Inject CSS + header
+    ui.tags.head(ui.HTML(KSU_CSS)),
 
     ui.div(
-        ui.img(
-            src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Kennesaw_State_Owls_logo.svg/1200px-Kennesaw_State_Owls_logo.svg.png",
-            style="height: 80px; margin-bottom: 1rem;"),
-        ui.h2("The Nest"),
         ui.div(
-            ui.download_button("download_report", "Download Full Report", class_="no-print"),
-            ui.input_action_button("print_button", "Print/Screenshot View", class_="no-print"),
-            ui.tags.script("$(document).on('click', '#print_button', function() { window.print(); });"),
-            style="margin-bottom: 1rem;"
-        )
+            ui.img(
+                src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Kennesaw_State_Owls_logo.svg/1200px-Kennesaw_State_Owls_logo.svg.png",
+                style="height: 52px; flex-shrink:0;"),
+            ui.div(
+                ui.div("The Nest", class_="nest-title"),
+                ui.div("KSU Baseball · Pitching Analytics", class_="nest-subtitle"),
+            ),
+            ui.div(
+                ui.download_button("download_report", "↓ Report", class_="no-print"),
+                ui.input_action_button("print_button", "⎙ Print", class_="no-print"),
+                ui.tags.script("$(document).on('click', '#print_button', function() { window.print(); });"),
+                class_="nest-actions"
+            ),
+            class_="nest-header"
+        ),
     ),
 
     ui.navset_tab(
         ui.nav_panel("Everything",
-                     ui.row(ui.column(12, ui.div(ui.h4("Summary Stats"), ui.output_ui("everything_summary_stats_table"),
-                                                 class_="metrics-table"))),
-                     ui.row(ui.column(12, ui.div(ui.h4("Pitch Metrics"), ui.output_ui("everything_pitch_metrics_table"),
-                                                 class_="metrics-table"))),
-                     ui.row(ui.column(12, ui.div(ui.h4("Pitch Stats"), ui.output_ui("everything_pitch_stats_table"),
-                                                 class_="metrics-table"))),
-                     ui.row(ui.column(6, ui.output_ui("everything_movement_plot", class_="plot-container")),
-                            ui.column(6, ui.output_ui("everything_release_plot", class_="plot-container"))),
-                     ui.row(ui.column(6, ui.output_ui("everything_velocity_plot", class_="plot-container")),
-                            ui.column(6, ui.output_ui("everything_location_plot", class_="plot-container"))),
-                     ui.row(ui.column(6, ui.output_ui("everything_strike_swinging_plot", class_="plot-container")),
-                            ui.column(6, ui.output_ui("everything_chase_plot", class_="plot-container"))),
-                     ui.row(ui.column(6, ui.output_ui("everything_called_strike_plot", class_="plot-container")),
-                            ui.column(6, ui.output_ui("everything_called_ball_plot", class_="plot-container"))),
-                     ui.row(ui.column(6, ui.output_ui("everything_arm_angle_plot", class_="plot-container")),
-                            ui.column(6, ui.div())),
-                     ),
+            ui.div(
+                ui.div("Summary Stats", class_="section-card-title"),
+                ui.output_ui("everything_summary_stats_table"),
+                class_="section-card"
+            ),
+            ui.div(
+                ui.div("Pitch Metrics", class_="section-card-title"),
+                ui.output_ui("everything_pitch_metrics_table"),
+                class_="section-card"
+            ),
+            ui.div(
+                ui.div("Pitch Stats", class_="section-card-title"),
+                ui.output_ui("everything_pitch_stats_table"),
+                class_="section-card"
+            ),
+            ui.row(
+                ui.column(6, ui.div(ui.output_ui("everything_movement_plot"), class_="section-card")),
+                ui.column(6, ui.div(ui.output_ui("everything_release_plot"), class_="section-card")),
+            ),
+            ui.row(
+                ui.column(6, ui.div(ui.output_ui("everything_velocity_plot"), class_="section-card")),
+                ui.column(6, ui.div(ui.output_ui("everything_location_plot"), class_="section-card")),
+            ),
+            ui.row(
+                ui.column(6, ui.div(ui.output_ui("everything_strike_swinging_plot"), class_="section-card")),
+                ui.column(6, ui.div(ui.output_ui("everything_chase_plot"), class_="section-card")),
+            ),
+            ui.row(
+                ui.column(6, ui.div(ui.output_ui("everything_called_strike_plot"), class_="section-card")),
+                ui.column(6, ui.div(ui.output_ui("everything_called_ball_plot"), class_="section-card")),
+            ),
+            ui.row(
+                ui.column(6, ui.div(ui.output_ui("everything_arm_angle_plot"), class_="section-card")),
+                ui.column(6, ui.div(
+                    ui.div("Pitch Usage by Batter Hand", class_="section-card-title"),
+                    ui.output_ui("everything_usage_by_hand_plot"),
+                    class_="section-card"
+                )),
+            ),
+        ),
 
         ui.nav_panel("Pitch Data",
-                     ui.row(ui.column(12, ui.div(ui.h4("Pitch Metrics"), ui.output_ui("data_pitch_metrics_table"),
-                                                 class_="metrics-table"))),
-                     ui.row(ui.column(12, ui.div(ui.h4("Pitch Stats"), ui.output_ui("data_pitch_stats_table"),
-                                                 class_="metrics-table"))),
-                     ui.row(ui.column(6, ui.output_ui("data_movement_plot", class_="plot-container")),
-                            ui.column(6, ui.output_ui("data_release_plot", class_="plot-container"))),
-                     ),
+            ui.div(
+                ui.div("Pitch Metrics", class_="section-card-title"),
+                ui.output_ui("data_pitch_metrics_table"),
+                class_="section-card"
+            ),
+            ui.div(
+                ui.div("Pitch Stats", class_="section-card-title"),
+                ui.output_ui("data_pitch_stats_table"),
+                class_="section-card"
+            ),
+            ui.row(
+                ui.column(6, ui.div(ui.output_ui("data_movement_plot"), class_="section-card")),
+                ui.column(6, ui.div(ui.output_ui("data_release_plot"), class_="section-card")),
+            ),
+        ),
 
         ui.nav_panel("Plots",
-                     ui.row(ui.column(6, ui.output_ui("plots_velocity_plot", class_="plot-container")),
-                            ui.column(6, ui.output_ui("plots_location_plot", class_="plot-container"))),
-                     ui.row(ui.column(6, ui.output_ui("plots_strike_swinging_plot", class_="plot-container")),
-                            ui.column(6, ui.output_ui("plots_chase_plot", class_="plot-container"))),
-                     ui.row(ui.column(6, ui.output_ui("plots_called_strike_plot", class_="plot-container")),
-                            ui.column(6, ui.output_ui("plots_called_ball_plot", class_="plot-container"))),
-                     ),
+            ui.row(
+                ui.column(6, ui.div(ui.output_ui("plots_velocity_plot"), class_="section-card")),
+                ui.column(6, ui.div(ui.output_ui("plots_location_plot"), class_="section-card")),
+            ),
+            ui.row(
+                ui.column(6, ui.div(ui.output_ui("plots_strike_swinging_plot"), class_="section-card")),
+                ui.column(6, ui.div(ui.output_ui("plots_chase_plot"), class_="section-card")),
+            ),
+            ui.row(
+                ui.column(6, ui.div(ui.output_ui("plots_called_strike_plot"), class_="section-card")),
+                ui.column(6, ui.div(ui.output_ui("plots_called_ball_plot"), class_="section-card")),
+            ),
+            ui.row(
+                ui.column(6, ui.div(
+                    ui.div("Pitch Usage by Batter Hand", class_="section-card-title"),
+                    ui.output_ui("plots_usage_by_hand_plot"),
+                    class_="section-card"
+                )),
+                ui.column(6),
+            ),
+        ),
 
         ui.nav_panel("Tunneling",
-                     ui.row(ui.column(12, ui.div(ui.h4("Release Angle Tunneling Analysis"), ui.p(
-                         "Analysis of pitch release angles to evaluate tunneling effectiveness at release point."),
-                                                 class_="section-header"))),
-                     ui.row(ui.column(12, ui.output_ui("tunneling_release_angles_plot", class_="plot-container"))),
-                     ui.row(ui.column(12, ui.div(ui.h4("Tunneling Metrics"), ui.output_ui("tunneling_metrics_table"),
-                                                 class_="metrics-table"))),
-                     ),
+            ui.div(
+                ui.div("Release Angle Tunneling Analysis", class_="section-card-title"),
+                ui.p("Analysis of pitch release angles to evaluate tunneling effectiveness at release point.",
+                     style="color:var(--ksu-muted,#999);font-size:0.82rem;margin-bottom:12px;"),
+                ui.output_ui("tunneling_release_angles_plot"),
+                class_="section-card"
+            ),
+            ui.div(
+                ui.div("Tunneling Metrics", class_="section-card-title"),
+                ui.output_ui("tunneling_metrics_table"),
+                class_="section-card"
+            ),
+        ),
 
         ui.nav_panel("Leaderboard",
-                     ui.row(ui.column(12, ui.div(ui.h4("Pitch Metrics Leaderboard"),
-                                                 ui.output_ui("leaderboard_metrics_table"),
-                                                 class_="metrics-table"))),
-                     ui.row(ui.column(12, ui.div(ui.h4("Pitch Stats Leaderboard"),
-                                                 ui.output_ui("leaderboard_stats_table"),
-                                                 class_="metrics-table"))),
-                     ),
+            ui.div(
+                ui.div("Pitch Metrics Leaderboard", class_="section-card-title"),
+                ui.output_ui("leaderboard_metrics_table"),
+                class_="section-card"
+            ),
+            ui.div(
+                ui.div("Pitch Stats Leaderboard", class_="section-card-title"),
+                ui.output_ui("leaderboard_stats_table"),
+                class_="section-card"
+            ),
+        ),
 
         id="main_tabs"
     ),
@@ -2574,6 +2928,107 @@ def server(input, output, session):
         html += f'<p style="font-size: 12px; color: #666; margin-top: 10px;"><strong>Showing:</strong> {pitch_type_display} | <strong>Min Pitches:</strong> {min_pitches} | <strong>Pitchers:</strong> {len(pitcher_stats_df)}</p>'
         return ui.HTML(html)
 
+    def create_usage_by_hand_plot():
+        """Butterfly / tornado chart: pitch usage % vs LHH (left) and RHH (right)."""
+        data = filtered_data()
+        view_mode = input.view_mode()
+
+        if view_mode:
+            display_name = "KEN_OWL Team"
+        else:
+            pitcher = input.pitcher_id()
+            if not pitcher:
+                return ui.div()
+            display_name = pitcher
+
+        if data.empty:
+            return ui.div()
+
+        if "BatterSide" not in data.columns or "PitchType" not in data.columns:
+            return ui.div("BatterSide or PitchType column not found")
+
+        lhh = data[data["BatterSide"] == "Left"]
+        rhh = data[data["BatterSide"] == "Right"]
+        n_lhh = len(lhh)
+        n_rhh = len(rhh)
+
+        if n_lhh == 0 and n_rhh == 0:
+            return ui.div("No batter-hand data available")
+
+        # Usage % per hand per pitch type
+        all_types = sorted(data["PitchType"].unique())
+        lhh_pct = (lhh["PitchType"].value_counts(normalize=True) * 100).reindex(all_types, fill_value=0)
+        rhh_pct = (rhh["PitchType"].value_counts(normalize=True) * 100).reindex(all_types, fill_value=0)
+
+        fig, ax = plt.subplots(figsize=(7, max(3, len(all_types) * 0.85)))
+        fig.patch.set_facecolor("#1A1A1A")
+        ax.set_facecolor("#1A1A1A")
+
+        bar_height = 0.52
+        y_positions = np.arange(len(all_types))
+
+        for i, pitch in enumerate(all_types):
+            color = pitch_colors_dict.get(pitch, "#9C8975")
+            lv = lhh_pct[pitch]
+            rv = rhh_pct[pitch]
+
+            # LHH bar (goes left — negative)
+            ax.barh(i, -lv, height=bar_height, color=color, alpha=0.92)
+            # RHH bar (goes right — positive)
+            ax.barh(i, rv,  height=bar_height, color=color, alpha=0.92)
+
+            # Labels
+            if lv > 0:
+                ax.text(-lv - 0.6, i, f"{lv:.1f}%", va="center", ha="right",
+                        fontsize=8, color="#E8E8E8", fontfamily="monospace")
+            if rv > 0:
+                ax.text(rv + 0.6, i, f"{rv:.1f}%", va="center", ha="left",
+                        fontsize=8, color="#E8E8E8", fontfamily="monospace")
+
+        # Pitch type labels on y-axis
+        ax.set_yticks(y_positions)
+        ax.set_yticklabels(all_types, fontsize=9, color="#E8E8E8")
+
+        # Center spine
+        ax.axvline(0, color="#E8E8E8", linewidth=1.2, zorder=5)
+
+        # X-axis ticks — show absolute values
+        max_pct = max(lhh_pct.max(), rhh_pct.max(), 1)
+        tick_max = int(np.ceil(max_pct / 10) * 10) + 10
+        ticks = np.arange(-tick_max, tick_max + 1, 10)
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([f"{abs(t)}%" for t in ticks], fontsize=7.5, color="#999999")
+
+        # Subtitle labels for LHH / RHH
+        ax.text(-tick_max * 0.55, -0.85, f"vs LHH ({n_lhh})",
+                fontsize=8.5, color="#FDBB30", ha="center", style="italic",
+                transform=ax.get_xaxis_transform())
+        ax.text(tick_max * 0.55, -0.85, f"vs RHH ({n_rhh})",
+                fontsize=8.5, color="#FDBB30", ha="center", style="italic",
+                transform=ax.get_xaxis_transform())
+
+        ax.set_xlabel("Usage %", fontsize=8, color="#999999", labelpad=14)
+        ax.xaxis.label.set_color("#999999")
+        ax.set_xlim(-tick_max, tick_max)
+
+        ax.set_title(f"Pitch Usage by Batter Hand",
+                     fontsize=11, fontweight="bold", color="#FDBB30", pad=10)
+
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_visible(False)
+        ax.spines["bottom"].set_color("#3A3A3A")
+        ax.tick_params(colors="#999999", which="both")
+        ax.grid(axis="x", color="#3A3A3A", linewidth=0.5, linestyle="--", alpha=0.7)
+
+        fig.tight_layout()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", bbox_inches="tight", dpi=110, facecolor="#1A1A1A")
+        buf.seek(0)
+        plt.close(fig)
+        img_data = base64.b64encode(buf.read()).decode()
+        return ui.HTML(f'<img src="data:image/png;base64,{img_data}" style="max-width:100%;height:auto;">')
+
     # Table outputs
     @output
     @render.ui
@@ -2608,6 +3063,17 @@ def server(input, output, session):
     @render.ui
     def leaderboard_stats_table():
         return create_leaderboard_stats_table()
+
+    # Butterfly usage chart outputs
+    @output
+    @render.ui
+    def everything_usage_by_hand_plot():
+        return create_usage_by_hand_plot()
+
+    @output
+    @render.ui
+    def plots_usage_by_hand_plot():
+        return create_usage_by_hand_plot()
 
     # Plot outputs - Everything tab
     @output
