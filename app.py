@@ -440,7 +440,7 @@ _PITCHING_PLUS_COLS = {
     "CSW%":          ("CSW%",          False, "CSW%"),
     "Chase%":        ("O-Swing%",      False, "Chase%"),
     "Swing%":        ("Swing%",        False, "Swing%"),
-    "iZ-Contact%":   ("Z-Contact%",    False, "iZ-Contact%"),
+    "iZ-Contact%":   ("Z-Contact%",    True,  "iZ-Contact%"),
     "vFB":           ("Fastball Velo", False, "vFB"),
     "Barrel%":       ("Barrel%",       True,  "Barrel%"),
     "HardHit%":      ("HardHit%",      True,  "HardHit%"),
@@ -579,13 +579,16 @@ def compute_savant_stats(data: pd.DataFrame) -> dict:
         stats["AdjGB%"] = round(((la_only < 10).sum() / len(la_only) * 100), 1) if len(la_only) > 0 else np.nan
 
         # xSLG via model
+        print(f"xSLG debug: model={_xslg_model is not None}, n_bip={n_bip}, ev_valid={valid.sum()}")
         preds = _predict_xslg(ev.values, la.values)
+        print(f"xSLG debug: preds={'None' if preds is None else f'len={len(preds)}, nan={np.isnan(preds).sum()}'}")
         if preds is not None:
             valid_preds = preds[~np.isnan(preds)]
             stats["xSLG_computed"] = round(float(valid_preds.mean()), 3) if len(valid_preds) > 0 else np.nan
         else:
             stats["xSLG_computed"] = np.nan
     else:
+        print(f"xSLG debug: BIP branch skipped — len(bip)={len(bip)}, cols={list(bip.columns[:10]) if len(bip)>0 else 'empty'}")
         stats["Barrel%"] = stats["HardHit%"] = stats["ExitVel"] = np.nan
         stats["AdjGB%"]  = stats["xSLG_computed"] = np.nan
 
