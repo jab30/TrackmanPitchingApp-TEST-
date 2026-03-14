@@ -1695,15 +1695,15 @@ KSU_CSS = """
 
 /* ── Root tokens ─────────────────────────────────────────── */
 :root {
-  --ksu-gold:    #FA4616;
-  --ksu-gold-dk: #c73510;
-  --ksu-dark:    #0a0f1e;
-  --ksu-mid:     #111827;
-  --ksu-panel:   #1a2236;
-  --ksu-border:  #253352;
+  --ksu-gold:    #FDBB30;
+  --ksu-gold-dk: #D99A00;
+  --ksu-dark:    #1A1A1A;
+  --ksu-mid:     #242424;
+  --ksu-panel:   #2C2C2C;
+  --ksu-border:  #3A3A3A;
   --ksu-text:    #E8E8E8;
-  --ksu-muted:   #8899bb;
-  --ksu-accent:  #FA4616;
+  --ksu-muted:   #999999;
+  --ksu-accent:  #FDBB30;
   --radius:      6px;
   --shadow:      0 2px 12px rgba(0,0,0,0.4);
 }
@@ -2022,7 +2022,7 @@ app_ui = ui.page_sidebar(
         # Logo inside sidebar at top
         ui.div(
             ui.img(
-                src="https://www.pngall.com/wp-content/uploads/15/Florida-Gators-Logo-PNG-Photo.png",
+                src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Kennesaw_State_Owls_logo.svg/1200px-Kennesaw_State_Owls_logo.svg.png",
                 style="height: 54px; display: block; margin: 0 auto 16px;"),
             style="text-align:center;"
         ),
@@ -2041,7 +2041,7 @@ app_ui = ui.page_sidebar(
         ui.panel_conditional(
             "input.season_lock",
             ui.div(
-                ui.HTML('<span style="color:#FA4616;font-size:0.78rem;font-weight:600;">📅 2026 Season: Feb 13 – latest data</span>'),
+                ui.HTML('<span style="color:#FDBB30;font-size:0.78rem;font-weight:600;">📅 2026 Season: Feb 13 – latest data</span>'),
                 style="padding:4px 0 8px 0;"
             )
         ),
@@ -2051,7 +2051,7 @@ app_ui = ui.page_sidebar(
                                {"pitch_type": "Pitch Type", "arm_angle": "Arm Angle Type"},
                                selected="pitch_type"),
         ui.div(
-            ui.div("Leaderboard Controls", class_="sidebar-leaderboard-section", style="color:#FA4616;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;"),
+            ui.div("Leaderboard Controls", class_="sidebar-leaderboard-section", style="color:#FDBB30;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;"),
             ui.input_select("leaderboard_pitch_type", "Filter by Pitch Type:",
                             {"TOTAL": "All Pitches (TOTAL)", **{pt: pt for pt in all_pitch_types if pt != "TOTAL"}},
                             selected="TOTAL"),
@@ -2069,11 +2069,11 @@ app_ui = ui.page_sidebar(
     ui.div(
         ui.div(
             ui.img(
-                src="https://www.pngall.com/wp-content/uploads/15/Florida-Gators-Logo-PNG-Photo.png",
+                src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Kennesaw_State_Owls_logo.svg/1200px-Kennesaw_State_Owls_logo.svg.png",
                 style="height: 52px; flex-shrink:0;"),
             ui.div(
-                ui.div("The Swamp", class_="nest-title"),
-                ui.div("Florida Gators · Pitching Analytics", class_="nest-subtitle"),
+                ui.div("The Nest", class_="nest-title"),
+                ui.div("KSU Baseball · Pitching Analytics", class_="nest-subtitle"),
             ),
             ui.div(
                 ui.download_button("download_report", "↓ Report", class_="no-print"),
