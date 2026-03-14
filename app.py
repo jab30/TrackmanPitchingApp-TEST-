@@ -3215,9 +3215,9 @@ def server(input, output, session):
                     _pt   = sub["PitchType"] if "PitchType" in sub.columns else pd.Series("", index=sub.index)
                     _velo = sub["RelSpeed"].round(1) if "RelSpeed" in sub.columns else pd.Series(float("nan"), index=sub.index)
                     import numpy as _np
-                    _play  = sub["PlayResult"].fillna("—")    if "PlayResult"  in sub.columns else pd.Series("—", index=sub.index)
-                    _ev    = sub["ExitSpeed"].round(1)          if "ExitSpeed"   in sub.columns else pd.Series(float("nan"), index=sub.index)
-                    _ang   = sub["Angle"].round(1)              if "Angle"       in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _result = sub.apply(_result_str, axis=1)
+                    _ev    = sub["ExitSpeed"].round(1) if "ExitSpeed" in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _ang   = sub["Angle"].round(1)     if "Angle"     in sub.columns else pd.Series(float("nan"), index=sub.index)
                     _batter = sub["Batter"].apply(lambda v: str(v).split(",")[0].strip() if pd.notna(v) and "," in str(v) else (str(v).strip() if pd.notna(v) else "—")) if "Batter" in sub.columns else pd.Series("—", index=sub.index)
                     _cd = _np.column_stack([
                         sub["InducedVertBreak"].round(1).fillna(0),
@@ -3225,7 +3225,7 @@ def server(input, output, session):
                         _sp.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
                         _velo.fillna(0),
                         _pt,
-                        _play,
+                        _result,
                         _ev.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
                         _ang.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
                         _batter,
@@ -3255,16 +3255,28 @@ def server(input, output, session):
                     _sp   = sub["stuff_plus"].round(1) if "stuff_plus" in sub.columns else pd.Series(float("nan"), index=sub.index)
                     _velo = sub["RelSpeed"].round(1)    if "RelSpeed"    in sub.columns else pd.Series(float("nan"), index=sub.index)
                     import numpy as _np
-                    _play  = sub["PlayResult"].fillna("—")    if "PlayResult"  in sub.columns else pd.Series("—", index=sub.index)
-                    _ev    = sub["ExitSpeed"].round(1)          if "ExitSpeed"   in sub.columns else pd.Series(float("nan"), index=sub.index)
-                    _ang   = sub["Angle"].round(1)              if "Angle"       in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    # Result: KorBB if K/BB, PlayResult if InPlay, else PitchCall
+                    def _result_str(row):
+                        pc = str(row.get("PitchCall","")) if "PitchCall" in row.index else ""
+                        korbb = str(row.get("KorBB","")) if "KorBB" in row.index else ""
+                        play  = str(row.get("PlayResult","")) if "PlayResult" in row.index else ""
+                        if korbb in ("Strikeout","Walk","HitByPitch") and korbb != "nan":
+                            return korbb
+                        if pc == "InPlay" and play and play not in ("nan","","None"):
+                            return play
+                        if pc and pc not in ("nan","","None"):
+                            return pc
+                        return "—"
+                    _result = sub.apply(_result_str, axis=1)
+                    _ev    = sub["ExitSpeed"].round(1) if "ExitSpeed" in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _ang   = sub["Angle"].round(1)     if "Angle"     in sub.columns else pd.Series(float("nan"), index=sub.index)
                     _batter = sub["Batter"].apply(lambda v: str(v).split(",")[0].strip() if pd.notna(v) and "," in str(v) else (str(v).strip() if pd.notna(v) else "—")) if "Batter" in sub.columns else pd.Series("—", index=sub.index)
                     _cd = _np.column_stack([
                         sub["InducedVertBreak"].round(1).fillna(0),
                         sub["HorzBreak"].round(1).fillna(0),
                         _sp.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
                         _velo.fillna(0),
-                        _play,
+                        _result,
                         _ev.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
                         _ang.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
                         _batter,
