@@ -316,6 +316,8 @@ if all(col in df.columns for col in ['RelSide', 'RelHeight']) and not rosters.em
 if "TaggedPitchType" in df.columns:
     df["PitchType"] = df["TaggedPitchType"].replace({
         "Four-Seam": "Fastball", "Fastball": "Fastball",
+        "FourSeamFastBall": "Fastball", "TwoSeamFastBall": "Fastball",
+        "OneSeamFastBall": "Fastball", "Other": "Fastball",
         "Sinker": "Sinker", "Slider": "Slider",
         "Sweeper": "Sweeper", "Curveball": "Curveball",
         "ChangeUp": "Changeup", "Splitter": "Splitter",
