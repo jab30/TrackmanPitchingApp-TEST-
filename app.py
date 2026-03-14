@@ -406,19 +406,23 @@ _fb_types = ["Fastball", "Sinker", "Cutter"]
 _bb_types = ["Curveball", "Slider", "Sweeper"]
 _os_types = ["Changeup", "Splitter"]
 
+# Use TaggedPitchType for primaryFB/fb_shapes — matches testheat.py exactly
 _grp_key = "PitcherId" if "PitcherId" in df.columns else ("Pitcher" if "Pitcher" in df.columns else None)
+_tagged_fb_types = ["Fastball", "Sinker", "Cutter", "FourSeamFastBall", "TwoSeamFastBall", "OneSeamFastBall"]
 
-if "PitchType" in df.columns and _grp_key is not None:
-    _fb_pitches = df[df["PitchType"].isin(_fb_types)]
+_tag_col = "TaggedPitchType" if "TaggedPitchType" in df.columns else "PitchType"
+
+if _tag_col in df.columns and _grp_key is not None:
+    _fb_pitches = df[df[_tag_col].isin(_tagged_fb_types)]
     if len(_fb_pitches) > 0:
-        _primary_fb = _fb_pitches.groupby([_grp_key, "PitchType"]).size().reset_index(name="_cnt")
+        _primary_fb = _fb_pitches.groupby([_grp_key, _tag_col]).size().reset_index(name="_cnt")
         _primary_fb = _primary_fb.loc[
             _primary_fb.groupby(_grp_key)["_cnt"].idxmax()
-        ][[_grp_key, "PitchType"]].rename(columns={"PitchType": "primaryFB"})
+        ][[_grp_key, _tag_col]].rename(columns={_tag_col: "primaryFB"})
         df = df.merge(_primary_fb, on=_grp_key, how="left")
         df["primaryFB"] = df["primaryFB"].fillna("Fastball")
-        # FB shape averages — row-wise comparison PitchType == primaryFB
-        _fb_mask = df["PitchType"] == df["primaryFB"]
+        # FB shape averages using TaggedPitchType == primaryFB (matches testheat.py)
+        _fb_mask = df[_tag_col] == df["primaryFB"]
         _fb_shapes = (
             df[_fb_mask]
             .groupby(_grp_key)
