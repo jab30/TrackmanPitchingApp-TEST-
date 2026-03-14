@@ -1,7 +1,7 @@
 ---
-title: PitchingApp
+title: FInalPitchingApp
 emoji: 🧤
-colorFrom: pink
+colorFrom: blue
 colorTo: blue
 sdk: docker
 pinned: false
