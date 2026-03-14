@@ -1232,12 +1232,28 @@ for _loc_dir in _LOC_MODEL_DIR_PATHS:
         break
 
 # Pre-compute reference distributions from full df for normalization
-# D1-wide reference distribution — computed from 1,017,946 pitches (2026 season)
-_stuff_ref = {
-    "fb": {"mean": 0.183801, "std": 0.057469},
-    "bb": {"mean": 0.320243, "std": 0.049292},
-    "os": {"mean": 0.328343, "std": 0.069438},
-}
+_stuff_ref = {}
+try:
+    if _stuff_models and "PitchType" in df.columns:
+        _df_fb_ref = df[
+            (df["PitchType"].isin(["Fastball","Sinker"])) |
+            ((df["PitchType"] == "Cutter") & (df.get("primaryFB", pd.Series(dtype=str)) == "Cutter"))
+        ].copy()
+        _df_bb_ref = df[
+            (df["PitchType"].isin(["Curveball","Slider","Sweeper"])) |
+            ((df["PitchType"] == "Cutter") & (df.get("primaryFB", pd.Series(dtype=str)) != "Cutter"))
+        ].copy()
+        _df_os_ref = df[df["PitchType"].isin(["Changeup","Splitter"])].copy()
+        for _key, _ref_df in [("fb", _df_fb_ref), ("bb", _df_bb_ref), ("os", _df_os_ref)]:
+            _m = _stuff_models.get(_key)
+            if _m is not None and len(_ref_df) > 0:
+                _feat = _m.feature_names_in_
+                _clean = _ref_df.dropna(subset=_feat)
+                if len(_clean) > 0:
+                    _preds = _m.predict_proba(_clean[_feat])[:, 1]
+                    _stuff_ref[_key] = {"mean": _preds.mean(), "std": _preds.std()}
+except Exception as _e:
+    print(f"Stuff+ ref computation error: {_e}")
 
 
 def _predict_stuff_plus(data: "pd.DataFrame") -> "pd.DataFrame":
@@ -3173,6 +3189,13 @@ def server(input, output, session):
             return ui.div()
         pitcher = display_name
 
+        # Add stuff_plus to data for movement plot hover
+        if "stuff_plus" not in data.columns and _stuff_models:
+            try:
+                data = _predict_stuff_plus(data)
+            except Exception:
+                data["stuff_plus"] = float("nan")
+
         # ── Movement ─────────────────────────────────────────────────────────
         if plot_type == "movement":
             if not all(col in data.columns for col in ["HorzBreak", "InducedVertBreak", "PitchType"]):
@@ -3188,20 +3211,24 @@ def server(input, output, session):
                 for g in groups:
                     sub = data[data["arm_angle_type"] == g].copy()
                     c = color_map[g]
-                    _sp  = sub["stuff_plus"].round(1)   if "stuff_plus"    in sub.columns else pd.Series(float("nan"), index=sub.index)
-                    _pls = sub["PlateLocSide"].round(2)  if "PlateLocSide"  in sub.columns else pd.Series(float("nan"), index=sub.index)
-                    _plh = sub["PlateLocHeight"].round(2) if "PlateLocHeight" in sub.columns else pd.Series(float("nan"), index=sub.index)
-                    _pt  = sub["PitchType"] if "PitchType" in sub.columns else pd.Series("", index=sub.index)
+                    _sp   = sub["stuff_plus"].round(1) if "stuff_plus" in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _pt   = sub["PitchType"] if "PitchType" in sub.columns else pd.Series("", index=sub.index)
                     _velo = sub["RelSpeed"].round(1) if "RelSpeed" in sub.columns else pd.Series(float("nan"), index=sub.index)
                     import numpy as _np
+                    _play  = sub["PlayResult"].fillna("—")    if "PlayResult"  in sub.columns else pd.Series("—", index=sub.index)
+                    _ev    = sub["ExitSpeed"].round(1)          if "ExitSpeed"   in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _ang   = sub["Angle"].round(1)              if "Angle"       in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _batter = sub["Batter"].apply(lambda v: str(v).split(",")[0].strip() if pd.notna(v) and "," in str(v) else (str(v).strip() if pd.notna(v) else "—")) if "Batter" in sub.columns else pd.Series("—", index=sub.index)
                     _cd = _np.column_stack([
                         sub["InducedVertBreak"].round(1).fillna(0),
                         sub["HorzBreak"].round(1).fillna(0),
                         _sp.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
-                        _pls.apply(lambda v: f"{v:.2f}" if pd.notna(v) else "—"),
-                        _plh.apply(lambda v: f"{v:.2f}" if pd.notna(v) else "—"),
                         _velo.fillna(0),
                         _pt,
+                        _play,
+                        _ev.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
+                        _ang.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
+                        _batter,
                     ])
                     traces.append(go.Scatter(
                         x=sub["HorzBreak"], y=sub["InducedVertBreak"],
@@ -3209,11 +3236,10 @@ def server(input, output, session):
                         marker=dict(color=c, size=5, opacity=0.6),
                         customdata=_cd,
                         hovertemplate=(
-                            "<b>%{customdata[6]}</b> · " + g + "<br>"
+                            "<b>%{customdata[4]}</b> vs %{customdata[8]} · " + g + "<br>"
                             "HB: %{x:.1f} in  |  IVB: %{customdata[0]:.1f} in<br>"
-                            "Velo: %{customdata[5]:.1f} mph<br>"
-                            "Stuff+: %{customdata[2]}<br>"
-                            "Zone: Side %{customdata[3]} ft, Ht %{customdata[4]} ft"
+                            "Velo: %{customdata[3]:.1f} mph  |  Stuff+: %{customdata[2]}<br>"
+                            "Result: %{customdata[5]}  |  EV: %{customdata[6]} mph  |  LA: %{customdata[7]}°"
                             "<extra></extra>"
                         )))
                     ell = _ellipse_trace(sub["HorzBreak"].values, sub["InducedVertBreak"].values, c)
@@ -3226,18 +3252,22 @@ def server(input, output, session):
                 for p in groups:
                     sub = data[data["PitchType"] == p].copy()
                     c = color_map[p]
-                    _sp  = sub["stuff_plus"].round(1)    if "stuff_plus"    in sub.columns else pd.Series(float("nan"), index=sub.index)
-                    _pls = sub["PlateLocSide"].round(2)  if "PlateLocSide"  in sub.columns else pd.Series(float("nan"), index=sub.index)
-                    _plh = sub["PlateLocHeight"].round(2) if "PlateLocHeight" in sub.columns else pd.Series(float("nan"), index=sub.index)
-                    _velo = sub["RelSpeed"].round(1)      if "RelSpeed"      in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _sp   = sub["stuff_plus"].round(1) if "stuff_plus" in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _velo = sub["RelSpeed"].round(1)    if "RelSpeed"    in sub.columns else pd.Series(float("nan"), index=sub.index)
                     import numpy as _np
+                    _play  = sub["PlayResult"].fillna("—")    if "PlayResult"  in sub.columns else pd.Series("—", index=sub.index)
+                    _ev    = sub["ExitSpeed"].round(1)          if "ExitSpeed"   in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _ang   = sub["Angle"].round(1)              if "Angle"       in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _batter = sub["Batter"].apply(lambda v: str(v).split(",")[0].strip() if pd.notna(v) and "," in str(v) else (str(v).strip() if pd.notna(v) else "—")) if "Batter" in sub.columns else pd.Series("—", index=sub.index)
                     _cd = _np.column_stack([
                         sub["InducedVertBreak"].round(1).fillna(0),
                         sub["HorzBreak"].round(1).fillna(0),
                         _sp.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
-                        _pls.apply(lambda v: f"{v:.2f}" if pd.notna(v) else "—"),
-                        _plh.apply(lambda v: f"{v:.2f}" if pd.notna(v) else "—"),
                         _velo.fillna(0),
+                        _play,
+                        _ev.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
+                        _ang.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
+                        _batter,
                     ])
                     traces.append(go.Scatter(
                         x=sub["HorzBreak"], y=sub["InducedVertBreak"],
@@ -3245,11 +3275,10 @@ def server(input, output, session):
                         marker=dict(color=c, size=5, opacity=0.6),
                         customdata=_cd,
                         hovertemplate=(
-                            f"<b>{p}</b><br>"
+                            f"<b>{p}</b> vs %{{customdata[7]}}<br>"
                             "HB: %{x:.1f} in  |  IVB: %{customdata[0]:.1f} in<br>"
-                            "Velo: %{customdata[5]:.1f} mph<br>"
-                            "Stuff+: %{customdata[2]}<br>"
-                            "Zone: Side %{customdata[3]} ft, Ht %{customdata[4]} ft"
+                            "Velo: %{customdata[3]:.1f} mph  |  Stuff+: %{customdata[2]}<br>"
+                            "Result: %{customdata[4]}  |  EV: %{customdata[5]} mph  |  LA: %{customdata[6]}°"
                             "<extra></extra>"
                         )))
                     ell = _ellipse_trace(sub["HorzBreak"].values, sub["InducedVertBreak"].values, c)
