@@ -4439,8 +4439,11 @@ def server(input, output, session):
     def tunneling_metrics_table():
         return create_tunneling_metrics_table()
 
-    @render.download(filename="pitcher_report.png")
-    def download_report():
+    @render.download(
+        filename=lambda: f"{(input.pitcher_id() or 'team').replace(' ','_')}_report.png",
+        media_type="image/png"
+    )
+    async def download_report():
         import matplotlib.gridspec as gridspec
         from matplotlib.colors import LinearSegmentedColormap
         from matplotlib.patches import Rectangle
@@ -4454,11 +4457,11 @@ def server(input, output, session):
         else:
             pitcher = input.pitcher_id()
             if not pitcher:
-                return None
+                return
             display_name = pitcher
 
         if data.empty:
-            return None
+            return
 
         # ── Compute Stuff+ if available ──────────────────────────────────────
         if _stuff_models:
@@ -4735,11 +4738,7 @@ def server(input, output, session):
         buf.seek(0)
         plt.close(fig)
 
-        return {
-            "content": buf.getvalue(),
-            "filename": f"{safe_name}_report.png",
-            "media_type": "image/png"
-        }
+        yield buf.getvalue()
 
 
 app = App(app_ui, server)
