@@ -1968,6 +1968,47 @@ tr:hover td {
 ::-webkit-scrollbar-thumb { background: var(--ksu-border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--ksu-muted); }
 
+/* ── Mobile responsive ───────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Allow section cards to scroll horizontally */
+  .section-card {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 10px 8px !important;
+    align-items: stretch !important;
+  }
+
+  /* Shrink table text and padding on mobile */
+  th {
+    font-size: 0.62rem !important;
+    padding: 6px 6px !important;
+    letter-spacing: 0.02em !important;
+    white-space: nowrap !important;
+  }
+
+  td {
+    font-size: 0.70rem !important;
+    padding: 5px 6px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Section titles smaller */
+  .section-card-title {
+    font-size: 0.68rem !important;
+    margin-bottom: 8px !important;
+  }
+
+  /* Sidebar collapses nicer */
+  .bslib-sidebar-layout > .main {
+    padding: 8px 6px !important;
+  }
+
+  /* Inner HTML table wrappers already have overflow-x:auto — ensure they fill */
+  .section-card > div {
+    width: 100% !important;
+  }
+}
+
 /* ── Print ───────────────────────────────────────────────── */
 @media print {
   .no-print { display: none !important; }
