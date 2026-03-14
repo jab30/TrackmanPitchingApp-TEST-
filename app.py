@@ -856,19 +856,19 @@ stat_ranges = {
 # Gradient coloring function
 def get_performance_color(value, pitch_type, metric):
     if pd.isna(value):
-        return "background-color: #2c2c2c; color: #E8E8E8;"
+        return "background-color: #1a2236; color: #E8E8E8;"
 
     if metric == 'LaunchAng':
         if -190 <= value <= 12:
             return "background-color: #dc3545; color: white; font-weight: bold;"
         elif 12 < value <= 18:
-            return "background-color: #2c2c2c; color: #E8E8E8;"
+            return "background-color: #1a2236; color: #E8E8E8;"
         elif 25 <= value <= 31:
             return "background-color: #007bff; color: white; font-weight: bold;"
         elif value >= 40:
             return "background-color: #dc3545; color: white; font-weight: bold;"
         else:
-            return "background-color: #2c2c2c; color: #E8E8E8;"
+            return "background-color: #1a2236; color: #E8E8E8;"
 
     if metric == 'ExitVel':
         min_val, max_val = 81.5, 90
@@ -895,7 +895,7 @@ def get_performance_color(value, pitch_type, metric):
             if metric in default_ranges:
                 min_val, max_val = default_ranges[metric]
             else:
-                return "background-color: #2c2c2c; color: #E8E8E8;"
+                return "background-color: #1a2236; color: #E8E8E8;"
 
         normalized = (value - min_val) / (max_val - min_val) if max_val > min_val else 0.5
         normalized = max(0, min(1, normalized))
@@ -960,7 +960,7 @@ def get_percentile_color(value, percentile, stat_name):
         CSS style string for the cell
     """
     if pd.isna(value) or pd.isna(percentile):
-        return "background-color: #2c2c2c; color: #E8E8E8;"
+        return "background-color: #1a2236; color: #E8E8E8;"
 
     # Stats where LOWER is better
     lower_is_better = ['BB%', 'FIP', 'Barrel%', 'HardHit%', 'BAA', 'wOBA']
@@ -1010,7 +1010,7 @@ def format_summary_stat(col, value):
 def get_summary_stat_color(value, stat_name):
     """Color code summary stats based on typical ranges"""
     if pd.isna(value):
-        return "background-color: #2c2c2c; color: #E8E8E8;"
+        return "background-color: #1a2236; color: #E8E8E8;"
 
     # Define ranges: (min, max, lower_is_better)
     stat_ranges = {
@@ -1025,7 +1025,7 @@ def get_summary_stat_color(value, stat_name):
 
     # Check if stat_name is valid FIRST
     if stat_name not in stat_ranges:
-        return "background-color: #2c2c2c; color: #E8E8E8;"
+        return "background-color: #1a2236; color: #E8E8E8;"
 
     # Get the stat range info
     min_val, max_val, lower_is_better = stat_ranges[stat_name]
@@ -1226,13 +1226,28 @@ for _loc_dir in _LOC_MODEL_DIR_PATHS:
         break
 
 # Pre-compute reference distributions from full df for normalization
-# D1-wide reference distribution — computed from 1,017,946 pitches (2026 season)
-# Hardcoded so Stuff+ is always relative to D1 average, not just local CSV sample
-_stuff_ref = {
-    "fb": {"mean": 0.183801, "std": 0.057469},
-    "bb": {"mean": 0.320243, "std": 0.049292},
-    "os": {"mean": 0.328343, "std": 0.069438},
-}
+_stuff_ref = {}
+try:
+    if _stuff_models and "PitchType" in df.columns:
+        _df_fb_ref = df[
+            (df["PitchType"].isin(["Fastball","Sinker"])) |
+            ((df["PitchType"] == "Cutter") & (df.get("primaryFB", pd.Series(dtype=str)) == "Cutter"))
+        ].copy()
+        _df_bb_ref = df[
+            (df["PitchType"].isin(["Curveball","Slider","Sweeper"])) |
+            ((df["PitchType"] == "Cutter") & (df.get("primaryFB", pd.Series(dtype=str)) != "Cutter"))
+        ].copy()
+        _df_os_ref = df[df["PitchType"].isin(["Changeup","Splitter"])].copy()
+        for _key, _ref_df in [("fb", _df_fb_ref), ("bb", _df_bb_ref), ("os", _df_os_ref)]:
+            _m = _stuff_models.get(_key)
+            if _m is not None and len(_ref_df) > 0:
+                _feat = _m.feature_names_in_
+                _clean = _ref_df.dropna(subset=_feat)
+                if len(_clean) > 0:
+                    _preds = _m.predict_proba(_clean[_feat])[:, 1]
+                    _stuff_ref[_key] = {"mean": _preds.mean(), "std": _preds.std()}
+except Exception as _e:
+    print(f"Stuff+ ref computation error: {_e}")
 
 
 def _predict_stuff_plus(data: "pd.DataFrame") -> "pd.DataFrame":
@@ -1318,7 +1333,7 @@ def _plus_color(value) -> str:
     try:
         v = float(value)
     except (TypeError, ValueError):
-        return "background-color: #2c2c2c; color: #E8E8E8; text-align: center;"
+        return "background-color: #1a2236; color: #E8E8E8; text-align: center;"
     lo, mid, hi = 70.0, 100.0, 130.0
     normalized = (v - lo) / (hi - lo)
     normalized = max(0.0, min(1.0, normalized))
@@ -1386,7 +1401,7 @@ def make_savant_bars_html(row, title: str) -> str:
 
     parts = []
     parts.append(
-        f'<div style="width:100%;overflow-x:auto;background:#1A1A1A;border-radius:6px;padding:4px 0;">'
+        f'<div style="width:100%;overflow-x:auto;background:#0a0f1e;border-radius:6px;padding:4px 0;">'
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {total_h}" '
         f'style="width:100%;max-width:{W}px;display:block;margin:0 auto;font-family:Barlow,Barlow Condensed,sans-serif;">'
     )
@@ -1532,7 +1547,7 @@ def make_mirrored_bars_html(lhh_row, rhh_row, title: str) -> str:
 
     parts = []
     parts.append(
-        f'<div style="width:100%;overflow-x:auto;background:#1A1A1A;border-radius:6px;padding:4px 0;">' 
+        f'<div style="width:100%;overflow-x:auto;background:#0a0f1e;border-radius:6px;padding:4px 0;">' 
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {total_h}" '
         f'style="width:100%;max-width:{W}px;display:block;margin:0 auto;font-family:Barlow,Barlow Condensed,sans-serif;">'
     )
@@ -1680,15 +1695,15 @@ KSU_CSS = """
 
 /* ── Root tokens ─────────────────────────────────────────── */
 :root {
-  --ksu-gold:    #FDBB30;
-  --ksu-gold-dk: #D99A00;
-  --ksu-dark:    #1A1A1A;
-  --ksu-mid:     #242424;
-  --ksu-panel:   #2C2C2C;
-  --ksu-border:  #3A3A3A;
+  --ksu-gold:    #FA4616;
+  --ksu-gold-dk: #c73510;
+  --ksu-dark:    #0a0f1e;
+  --ksu-mid:     #111827;
+  --ksu-panel:   #1a2236;
+  --ksu-border:  #253352;
   --ksu-text:    #E8E8E8;
-  --ksu-muted:   #999999;
-  --ksu-accent:  #FDBB30;
+  --ksu-muted:   #8899bb;
+  --ksu-accent:  #FA4616;
   --radius:      6px;
   --shadow:      0 2px 12px rgba(0,0,0,0.4);
 }
@@ -1909,7 +1924,7 @@ table {
 }
 
 th {
-  background: #333 !important;
+  background: #0d1526 !important;
   color: var(--ksu-gold) !important;
   font-family: 'Barlow Condensed', sans-serif !important;
   font-size: 0.75rem !important;
@@ -1921,7 +1936,7 @@ th {
 }
 
 th:hover {
-  background: #3c3c3c !important;
+  background: #1a2a46 !important;
 }
 
 td {
@@ -2007,7 +2022,7 @@ app_ui = ui.page_sidebar(
         # Logo inside sidebar at top
         ui.div(
             ui.img(
-                src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Kennesaw_State_Owls_logo.svg/1200px-Kennesaw_State_Owls_logo.svg.png",
+                src="https://www.pngall.com/wp-content/uploads/15/Florida-Gators-Logo-PNG-Photo.png",
                 style="height: 54px; display: block; margin: 0 auto 16px;"),
             style="text-align:center;"
         ),
@@ -2026,7 +2041,7 @@ app_ui = ui.page_sidebar(
         ui.panel_conditional(
             "input.season_lock",
             ui.div(
-                ui.HTML('<span style="color:#FDBB30;font-size:0.78rem;font-weight:600;">📅 2026 Season: Feb 13 – latest data</span>'),
+                ui.HTML('<span style="color:#FA4616;font-size:0.78rem;font-weight:600;">📅 2026 Season: Feb 13 – latest data</span>'),
                 style="padding:4px 0 8px 0;"
             )
         ),
@@ -2036,7 +2051,7 @@ app_ui = ui.page_sidebar(
                                {"pitch_type": "Pitch Type", "arm_angle": "Arm Angle Type"},
                                selected="pitch_type"),
         ui.div(
-            ui.div("Leaderboard Controls", class_="sidebar-leaderboard-section", style="color:#FDBB30;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;"),
+            ui.div("Leaderboard Controls", class_="sidebar-leaderboard-section", style="color:#FA4616;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;"),
             ui.input_select("leaderboard_pitch_type", "Filter by Pitch Type:",
                             {"TOTAL": "All Pitches (TOTAL)", **{pt: pt for pt in all_pitch_types if pt != "TOTAL"}},
                             selected="TOTAL"),
@@ -2054,11 +2069,11 @@ app_ui = ui.page_sidebar(
     ui.div(
         ui.div(
             ui.img(
-                src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Kennesaw_State_Owls_logo.svg/1200px-Kennesaw_State_Owls_logo.svg.png",
+                src="https://www.pngall.com/wp-content/uploads/15/Florida-Gators-Logo-PNG-Photo.png",
                 style="height: 52px; flex-shrink:0;"),
             ui.div(
-                ui.div("The Nest", class_="nest-title"),
-                ui.div("KSU Baseball · Pitching Analytics", class_="nest-subtitle"),
+                ui.div("The Swamp", class_="nest-title"),
+                ui.div("Florida Gators · Pitching Analytics", class_="nest-subtitle"),
             ),
             ui.div(
                 ui.download_button("download_report", "↓ Report", class_="no-print"),
@@ -2437,7 +2452,7 @@ def server(input, output, session):
                 value = row[col]
                 if col == 'PitchType':
                     if value == 'TOTAL':
-                        html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: #2c2c2c; color: #E8E8E8; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
+                        html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: #1a2236; color: #E8E8E8; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
                     else:
                         color = pitch_colors_dict.get(value, "#9C8975")
                         html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: {color}; color: white; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
@@ -2453,7 +2468,7 @@ def server(input, output, session):
                     is_nan = pd.isna(value)
                     if is_nan:
                         disp = '—'
-                        bg_style = 'background-color: #2c2c2c; color: #E8E8E8;'
+                        bg_style = 'background-color: #1a2236; color: #E8E8E8;'
                     else:
                         disp = f"{value:.1f}"
                         bg_style = _plus_color(value)
@@ -2474,7 +2489,7 @@ def server(input, output, session):
                 else:
                     formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(value) else str(value)
                     if row['PitchType'] == 'TOTAL':
-                        html += f'<td style="border: 1px solid #2c2c2c; padding: 8px; text-align: center; font-weight: bold; background-color: #2c2c2c; color: #E8E8E8;">{formatted_value}</td>'
+                        html += f'<td style="border: 1px solid #2c2c2c; padding: 8px; text-align: center; font-weight: bold; background-color: #1a2236; color: #E8E8E8;">{formatted_value}</td>'
                     else:
                         html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{formatted_value}</td>'
             html += '</tr>'
@@ -3070,7 +3085,7 @@ def server(input, output, session):
             for col, value in row.items():
                 if col == 'PitchType':
                     if value == 'TOTAL':
-                        html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: #2c2c2c; color: #E8E8E8; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
+                        html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: #1a2236; color: #E8E8E8; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
                     else:
                         color = pitch_colors_dict.get(value, "#9C8975")
                         html += f'<td style="border: 1px solid #ddd; padding: 6px; background-color: {color}; color: white; font-weight: bold; text-align: center; border-radius: 4px;">{value}</td>'
@@ -3086,7 +3101,7 @@ def server(input, output, session):
                     formatted_value = f"{value:.1f}" if isinstance(value, (int, float)) and value != int(
                         value) else str(value)
                     if row['PitchType'] == 'TOTAL':
-                        html += f'<td style="border: 1px solid #2c2c2c; padding: 8px; text-align: center; font-weight: bold; background-color: #2c2c2c; color: #E8E8E8;">{formatted_value}</td>'
+                        html += f'<td style="border: 1px solid #2c2c2c; padding: 8px; text-align: center; font-weight: bold; background-color: #1a2236; color: #E8E8E8;">{formatted_value}</td>'
                     else:
                         html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{formatted_value}</td>'
             html += '</tr>'
@@ -3181,13 +3196,36 @@ def server(input, output, session):
                 color_map = {g: arm_angle_colors.get(g, "#9C8975") for g in groups}
                 legend_key = "Arm Angle Type"
                 for g in groups:
-                    sub = data[data["arm_angle_type"] == g]
+                    sub = data[data["arm_angle_type"] == g].copy()
                     c = color_map[g]
+                    _sp  = sub["stuff_plus"].round(1)   if "stuff_plus"    in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _pls = sub["PlateLocSide"].round(2)  if "PlateLocSide"  in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _plh = sub["PlateLocHeight"].round(2) if "PlateLocHeight" in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _pt  = sub["PitchType"] if "PitchType" in sub.columns else pd.Series("", index=sub.index)
+                    _velo = sub["RelSpeed"].round(1) if "RelSpeed" in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    import numpy as _np
+                    _cd = _np.column_stack([
+                        sub["InducedVertBreak"].round(1).fillna(0),
+                        sub["HorzBreak"].round(1).fillna(0),
+                        _sp.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
+                        _pls.apply(lambda v: f"{v:.2f}" if pd.notna(v) else "—"),
+                        _plh.apply(lambda v: f"{v:.2f}" if pd.notna(v) else "—"),
+                        _velo.fillna(0),
+                        _pt,
+                    ])
                     traces.append(go.Scatter(
                         x=sub["HorzBreak"], y=sub["InducedVertBreak"],
                         mode="markers", name=g,
                         marker=dict(color=c, size=5, opacity=0.6),
-                        hovertemplate=f"<b>{g}</b><br>HB: %{{x:.1f}}<br>IVB: %{{y:.1f}}<extra></extra>"))
+                        customdata=_cd,
+                        hovertemplate=(
+                            "<b>%{customdata[6]}</b> · " + g + "<br>"
+                            "HB: %{x:.1f} in  |  IVB: %{customdata[0]:.1f} in<br>"
+                            "Velo: %{customdata[5]:.1f} mph<br>"
+                            "Stuff+: %{customdata[2]}<br>"
+                            "Zone: Side %{customdata[3]} ft, Ht %{customdata[4]} ft"
+                            "<extra></extra>"
+                        )))
                     ell = _ellipse_trace(sub["HorzBreak"].values, sub["InducedVertBreak"].values, c)
                     if ell:
                         traces.append(ell)
@@ -3196,13 +3234,34 @@ def server(input, output, session):
                 color_map = {p: pitch_colors_dict.get(p, "#9C8975") for p in groups}
                 legend_key = "Pitch Type"
                 for p in groups:
-                    sub = data[data["PitchType"] == p]
+                    sub = data[data["PitchType"] == p].copy()
                     c = color_map[p]
+                    _sp  = sub["stuff_plus"].round(1)    if "stuff_plus"    in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _pls = sub["PlateLocSide"].round(2)  if "PlateLocSide"  in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _plh = sub["PlateLocHeight"].round(2) if "PlateLocHeight" in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    _velo = sub["RelSpeed"].round(1)      if "RelSpeed"      in sub.columns else pd.Series(float("nan"), index=sub.index)
+                    import numpy as _np
+                    _cd = _np.column_stack([
+                        sub["InducedVertBreak"].round(1).fillna(0),
+                        sub["HorzBreak"].round(1).fillna(0),
+                        _sp.apply(lambda v: f"{v:.1f}" if pd.notna(v) else "—"),
+                        _pls.apply(lambda v: f"{v:.2f}" if pd.notna(v) else "—"),
+                        _plh.apply(lambda v: f"{v:.2f}" if pd.notna(v) else "—"),
+                        _velo.fillna(0),
+                    ])
                     traces.append(go.Scatter(
                         x=sub["HorzBreak"], y=sub["InducedVertBreak"],
                         mode="markers", name=p,
                         marker=dict(color=c, size=5, opacity=0.6),
-                        hovertemplate=f"<b>{p}</b><br>HB: %{{x:.1f}}<br>IVB: %{{y:.1f}}<extra></extra>"))
+                        customdata=_cd,
+                        hovertemplate=(
+                            f"<b>{p}</b><br>"
+                            "HB: %{x:.1f} in  |  IVB: %{customdata[0]:.1f} in<br>"
+                            "Velo: %{customdata[5]:.1f} mph<br>"
+                            "Stuff+: %{customdata[2]}<br>"
+                            "Zone: Side %{customdata[3]} ft, Ht %{customdata[4]} ft"
+                            "<extra></extra>"
+                        )))
                     ell = _ellipse_trace(sub["HorzBreak"].values, sub["InducedVertBreak"].values, c)
                     if ell:
                         traces.append(ell)
@@ -3532,7 +3591,7 @@ def server(input, output, session):
 
         def get_consistency_color(value, col_name, is_plate_metric=False):
             if pd.isna(value) or value == 0:
-                return "background-color: #2c2c2c; color: #E8E8E8;"
+                return "background-color: #1a2236; color: #E8E8E8;"
 
             # For plate location metrics, HIGHER is better (more deception)
             if is_plate_metric:
@@ -3787,7 +3846,7 @@ def server(input, output, session):
                     html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; {style}">{formatted_value}</td>'
                 elif col in ['Stuff+', 'Location+', 'Pitching+']:
                     if pd.isna(value):
-                        html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; background-color: #2c2c2c; color: #E8E8E8;">—</td>'
+                        html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; background-color: #1a2236; color: #E8E8E8;">—</td>'
                     else:
                         style = _plus_color(value)
                         html += f'<td style="border: 1px solid #ddd; padding: 8px; {style}">{value:.1f}</td>'
