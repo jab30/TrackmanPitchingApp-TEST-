@@ -55,15 +55,22 @@ def _log_attempt(ip: str, success: bool):
 
 
 def _get_ip(session) -> str:
-    """
-    Best-effort client IP extraction.
-    - Local: real IP from Starlette request
-    - Behind reverse proxy (HuggingFace, nginx): X-Forwarded-For header
-    """
+    """Try multiple internal Shiny/Starlette paths to get client IP."""
     try:
-        # Access the underlying Starlette request object
+        # Path 1: websocket ASGI scope (most reliable in Shiny for Python)
+        scope = session._conn.scope
+        headers = dict(scope.get("headers", []))
+        xff = headers.get(b"x-forwarded-for", b"").decode().strip()
+        if xff:
+            return xff.split(",")[0].strip()
+        client = scope.get("client")
+        if client:
+            return client[0]
+    except Exception:
+        pass
+    try:
+        # Path 2: underlying Starlette request object
         req = session._conn._request
-        # Check X-Forwarded-For first (set by reverse proxies)
         xff = req.headers.get("x-forwarded-for", "").strip()
         if xff:
             return xff.split(",")[0].strip()
@@ -96,18 +103,100 @@ html, body {{
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 16px;
+    box-sizing: border-box;
 }}
 
+/* ── Device picker screen ── */
+#device-screen {{
+    position: relative; z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    box-sizing: border-box;
+}}
+
+.device-card {{
+    background: rgba(14, 14, 14, 0.92);
+    border: 1px solid rgba(245, 200, 66, 0.18);
+    border-radius: 18px;
+    padding: 48px 44px 40px;
+    width: 380px;
+    max-width: 100%;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.75);
+    text-align: center;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}}
+
+.device-title {{
+    color: #f5c842;
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+}}
+
+.device-sub {{
+    color: #888;
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+}}
+
+.device-btn-row {{
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+}}
+
+.device-btn {{
+    flex: 1;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px;
+    color: #e8e8e8;
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 20px 10px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s, transform 0.1s;
+    letter-spacing: 0.04em;
+}}
+.device-btn:hover {{
+    border-color: #f5c842;
+    background: rgba(245,200,66,0.08);
+    transform: translateY(-2px);
+}}
+.device-btn .dev-icon {{
+    font-size: 2rem;
+    display: block;
+    margin-bottom: 8px;
+}}
+
+/* ── Login card — desktop ── */
 .login-card {{
     background: rgba(14, 14, 14, 0.90);
     border: 1px solid rgba(245, 200, 66, 0.18);
     border-radius: 18px;
     padding: 52px 48px 44px;
     width: 380px;
+    max-width: 100%;
     box-shadow: 0 32px 80px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04);
     text-align: center;
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+}}
+
+/* ── Login card — mobile ── */
+.login-card.mobile {{
+    padding: 36px 24px 32px;
+    width: 100%;
+    border-radius: 14px;
 }}
 
 .login-owl {{
@@ -115,6 +204,7 @@ html, body {{
     margin-bottom: 10px;
     line-height: 1;
 }}
+.mobile .login-owl {{ font-size: 2.4rem; }}
 
 .login-title {{
     color: #f5c842;
@@ -124,19 +214,20 @@ html, body {{
     text-transform: uppercase;
     margin-bottom: 3px;
 }}
+.mobile .login-title {{ font-size: 1.35rem; }}
 
 .login-sub {{
     color: #888;
     font-size: 0.75rem;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    margin-bottom: 36px;
+    margin-bottom: 28px;
 }}
 
 .login-divider {{
     border: none;
     border-top: 1px solid rgba(255,255,255,0.08);
-    margin: 0 0 28px;
+    margin: 0 0 24px;
 }}
 
 #pw-input {{
@@ -152,6 +243,12 @@ html, body {{
     letter-spacing: 0.18em;
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
+    -webkit-appearance: none;
+}}
+.mobile #pw-input {{
+    font-size: 1.1rem;
+    padding: 16px 14px;
+    border-radius: 12px;
 }}
 #pw-input:focus {{
     border-color: #f5c842;
@@ -179,6 +276,12 @@ html, body {{
     transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
     box-shadow: 0 4px 20px rgba(245,200,66,0.25);
 }}
+.mobile #login-btn {{
+    font-size: 1.05rem;
+    padding: 18px 0;
+    border-radius: 12px;
+    margin-top: 18px;
+}}
 #login-btn:hover {{
     background: #ffd84d;
     transform: translateY(-1px);
@@ -196,6 +299,7 @@ html, body {{
     min-height: 20px;
     letter-spacing: 0.04em;
 }}
+.mobile .login-error {{ font-size: 0.9rem; }}
 
 .login-footer {{
     color: #444;
@@ -204,35 +308,67 @@ html, body {{
     margin-top: 28px;
     text-transform: uppercase;
 }}
+.mobile .login-footer {{ font-size: 0.72rem; margin-top: 20px; }}
 """
 
-_login_page = ui.div(
+# ── Device picker page (shown before login) ───────────────────────────────────
+_device_picker = ui.div(
     ui.tags.style(_CSS),
-    # Background layer
     ui.div(id="login-bg"),
-    # Card
     ui.div(
         ui.div(
-            ui.div("🦉",              class_="login-owl"),
-            ui.div("KSU Baseball",    class_="login-title"),
-            ui.div("Analytics Portal",class_="login-sub"),
-            ui.tags.hr(              class_="login-divider"),
-            # Password input (raw HTML so we get the right id)
-            ui.tags.input(
-                id="pw-input",
-                type="password",
-                placeholder="Enter password",
-                autocomplete="off",
-                onkeydown="if(event.key==='Enter'){document.getElementById('login-btn').click();}",
+            ui.div("🦉", class_="login-owl"),
+            ui.div("KSU Baseball", class_="device-title"),
+            ui.div("Select your device", class_="device-sub"),
+            ui.div(
+                ui.tags.button(
+                    ui.tags.span("💻", class_="dev-icon"),
+                    "Computer",
+                    id="dev-desktop",
+                    class_="device-btn",
+                    onclick="Shiny.setInputValue('device_choice', 'desktop', {priority:'event'});",
+                ),
+                ui.tags.button(
+                    ui.tags.span("📱", class_="dev-icon"),
+                    "Mobile",
+                    id="dev-mobile",
+                    class_="device-btn",
+                    onclick="Shiny.setInputValue('device_choice', 'mobile', {priority:'event'});",
+                ),
+                class_="device-btn-row",
             ),
-            ui.input_action_button("login_btn", "Log In"),
-            ui.output_ui("error_out"),
-            ui.div("Kennesaw State University · Baseball Analytics", class_="login-footer"),
-            class_="login-card",
+            class_="device-card",
         ),
-        id="login-wrap",
+        id="device-screen",
     ),
 )
+
+def _login_page(mobile: bool = False):
+    card_class = "login-card mobile" if mobile else "login-card"
+    return ui.div(
+        ui.tags.style(_CSS),
+        ui.div(id="login-bg"),
+        ui.div(
+            ui.div(
+                ui.div("🦉",               class_="login-owl"),
+                ui.div("KSU Baseball",     class_="login-title"),
+                ui.div("Analytics Portal", class_="login-sub"),
+                ui.tags.hr(                class_="login-divider"),
+                ui.tags.input(
+                    id="pw-input",
+                    type="password",
+                    placeholder="Enter password",
+                    autocomplete="off",
+                    onkeydown="if(event.key==='Enter'){document.getElementById('login-btn').click();}",
+                ),
+                ui.input_action_button("login_btn", "Log In"),
+                ui.output_ui("error_out"),
+                ui.div("Kennesaw State University · Baseball Analytics", class_="login-footer"),
+                class_=card_class,
+            ),
+            id="login-wrap",
+        ),
+    )
 
 
 # ── Main app UI (imported lazily after auth) ───────────────────────────────────
@@ -249,18 +385,26 @@ app_ui = ui.page_output("root_ui")
 
 
 def server(input, output, session):
-    authed    = reactive.value(False)
-    error_msg = reactive.value("")
+    authed      = reactive.value(False)
+    error_msg   = reactive.value("")
+    device      = reactive.value("")   # "" = not chosen, "desktop", "mobile"
+
+    # ── Device choice ─────────────────────────────────────────────────────────
+    @reactive.effect
+    def _pick_device():
+        try:
+            d = input.device_choice()
+            if d in ("desktop", "mobile"):
+                device.set(d)
+        except Exception:
+            pass
 
     # ── Password check ────────────────────────────────────────────────────────
     @reactive.effect
     @reactive.event(input.login_btn)
     def _handle_login():
-        # Read the raw HTML input value via JS message
-        # Shiny doesn't auto-bind raw <input> tags — use session.send_input_message workaround
-        # Instead, we use a JS observer to sync it (see tags.script below)
-        pw  = input.pw_val() if hasattr(input, "pw_val") else ""
-        ip  = _get_ip(session)
+        pw = input.pw_val() if hasattr(input, "pw_val") else ""
+        ip = _get_ip(session)
         if pw == PASSWORD:
             _log_attempt(ip, True)
             authed.set(True)
@@ -273,10 +417,8 @@ def server(input, output, session):
     @render.ui
     def root_ui():
         if authed():
-            # Dynamically load the main app UI
             try:
                 main_ui, main_server = _load_main_app_ui()
-                # Register main server logic
                 main_server(input, output, session)
                 return main_ui
             except Exception as e:
@@ -285,11 +427,17 @@ def server(input, output, session):
                     ui.p(str(e)),
                     style="padding:40px; color:white; background:#111; min-height:100vh;"
                 )
-        # Show login + JS bridge to sync raw input → Shiny reactive
+
+        d = device()
+        if not d:
+            # Step 1: device picker
+            return _device_picker
+
+        # Step 2: login card sized for chosen device
+        is_mobile = (d == "mobile")
         return ui.div(
-            _login_page,
+            _login_page(mobile=is_mobile),
             ui.tags.script("""
-                // Sync raw #pw-input value into Shiny input as 'pw_val'
                 (function() {
                     function syncPw() {
                         var val = document.getElementById('pw-input');
@@ -298,11 +446,10 @@ def server(input, output, session):
                     document.addEventListener('keydown', function(e) {
                         if (e.key === 'Enter') syncPw();
                     });
-                    var btn = document.getElementById('login-btn');
-                    if (btn) btn.addEventListener('mousedown', syncPw);
-
-                    // Also attach on any click just in case button re-renders
                     document.addEventListener('click', function(e) {
+                        if (e.target && e.target.id === 'login-btn') syncPw();
+                    });
+                    document.addEventListener('mousedown', function(e) {
                         if (e.target && e.target.id === 'login-btn') syncPw();
                     });
                 })();
