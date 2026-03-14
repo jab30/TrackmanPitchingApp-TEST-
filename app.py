@@ -1695,15 +1695,15 @@ KSU_CSS = """
 
 /* ── Root tokens ─────────────────────────────────────────── */
 :root {
-  --ksu-gold:    #FDBB30;
-  --ksu-gold-dk: #D99A00;
-  --ksu-dark:    #1A1A1A;
-  --ksu-mid:     #242424;
-  --ksu-panel:   #2C2C2C;
-  --ksu-border:  #3A3A3A;
+  --ksu-gold:    #FA4616;
+  --ksu-gold-dk: #c73510;
+  --ksu-dark:    #0a0f1e;
+  --ksu-mid:     #111827;
+  --ksu-panel:   #1a2236;
+  --ksu-border:  #253352;
   --ksu-text:    #E8E8E8;
-  --ksu-muted:   #999999;
-  --ksu-accent:  #FDBB30;
+  --ksu-muted:   #8899bb;
+  --ksu-accent:  #FA4616;
   --radius:      6px;
   --shadow:      0 2px 12px rgba(0,0,0,0.4);
 }
@@ -2022,7 +2022,7 @@ app_ui = ui.page_sidebar(
         # Logo inside sidebar at top
         ui.div(
             ui.img(
-                src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Kennesaw_State_Owls_logo.svg/1200px-Kennesaw_State_Owls_logo.svg.png",
+                src="https://www.pngall.com/wp-content/uploads/15/Florida-Gators-Logo-PNG-Photo.png",
                 style="height: 54px; display: block; margin: 0 auto 16px;"),
             style="text-align:center;"
         ),
@@ -2041,7 +2041,7 @@ app_ui = ui.page_sidebar(
         ui.panel_conditional(
             "input.season_lock",
             ui.div(
-                ui.HTML('<span style="color:#FDBB30;font-size:0.78rem;font-weight:600;">📅 2026 Season: Feb 13 – latest data</span>'),
+                ui.HTML('<span style="color:#FA4616;font-size:0.78rem;font-weight:600;">📅 2026 Season: Feb 13 – latest data</span>'),
                 style="padding:4px 0 8px 0;"
             )
         ),
@@ -2051,7 +2051,7 @@ app_ui = ui.page_sidebar(
                                {"pitch_type": "Pitch Type", "arm_angle": "Arm Angle Type"},
                                selected="pitch_type"),
         ui.div(
-            ui.div("Leaderboard Controls", class_="sidebar-leaderboard-section", style="color:#FDBB30;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;"),
+            ui.div("Leaderboard Controls", class_="sidebar-leaderboard-section", style="color:#FA4616;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;"),
             ui.input_select("leaderboard_pitch_type", "Filter by Pitch Type:",
                             {"TOTAL": "All Pitches (TOTAL)", **{pt: pt for pt in all_pitch_types if pt != "TOTAL"}},
                             selected="TOTAL"),
@@ -2069,11 +2069,11 @@ app_ui = ui.page_sidebar(
     ui.div(
         ui.div(
             ui.img(
-                src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Kennesaw_State_Owls_logo.svg/1200px-Kennesaw_State_Owls_logo.svg.png",
+                src="https://www.pngall.com/wp-content/uploads/15/Florida-Gators-Logo-PNG-Photo.png",
                 style="height: 52px; flex-shrink:0;"),
             ui.div(
-                ui.div("The Nest", class_="nest-title"),
-                ui.div("KSU Baseball · Pitching Analytics", class_="nest-subtitle"),
+                ui.div("The Swamp", class_="nest-title"),
+                ui.div("Florida Gators · Pitching Analytics", class_="nest-subtitle"),
             ),
             ui.div(
                 ui.download_button("download_report", "↓ Report", class_="no-print"),
@@ -4441,11 +4441,16 @@ def server(input, output, session):
 
     @render.download(filename="pitcher_report.png")
     def download_report():
+        import matplotlib.gridspec as gridspec
+        from matplotlib.colors import LinearSegmentedColormap
+        from matplotlib.patches import Rectangle
+        from scipy.stats import gaussian_kde as _gkde
+
         data = filtered_data()
         view_mode = input.view_mode()
 
         if view_mode:
-            display_name = "KEN_OWL Team"
+            display_name = "Team Overview"
         else:
             pitcher = input.pitcher_id()
             if not pitcher:
@@ -4455,49 +4460,284 @@ def server(input, output, session):
         if data.empty:
             return None
 
-        grouped = data.groupby("PitchType")
-        metrics = grouped.agg(
-            AvgVelo=("RelSpeed", "mean"),
-            InducedVertBreak=("InducedVertBreak", "mean"),
-            HorzBreak=("HorzBreak", "mean"),
-            SpinRate=("SpinRate", "mean"),
-            RelHeight=("RelHeight", "mean"),
-            RelSide=("RelSide", "mean"),
-            Extension=("Extension", "mean"),
-            VertApprAngle=("VertApprAngle", "mean"),
-            HorzApprAngle=("HorzApprAngle", "mean"),
-            ExitSpeed=("ExitSpeed", "mean"),
-            Angle=("Angle", "mean")
-        ).round(1)
+        # ── Compute Stuff+ if available ──────────────────────────────────────
+        if _stuff_models:
+            try:
+                _plus_data = _compute_plus_by_pitch(data)
+            except Exception:
+                _plus_data = pd.DataFrame()
+        else:
+            _plus_data = pd.DataFrame()
 
-        # Add Tilt if available
-        if "Tilt" in data.columns and not data["Tilt"].isna().all():
-            tilt_stats = grouped["Tilt"].mean().round(1)
-            metrics["Tilt"] = tilt_stats
+        pitch_types = [p for p in data["PitchType"].dropna().unique() if p != "Unknown"]
+        pitch_types = sorted(pitch_types, key=lambda p: data[data["PitchType"]==p].shape[0], reverse=True)
 
-        metrics["MaxVelo"] = grouped["RelSpeed"].max().round(1)
+        _COLORS = pitch_colors_dict
+        BG      = "#141414"
+        CARD    = "#1e1e1e"
+        GOLD    = "#FDBB30"
+        TEXT    = "#E8E8E8"
+        MUTED   = "#888888"
 
-        if "arm_angle" in data.columns:
-            metrics["ArmAngle"] = (90 - grouped["arm_angle"].mean()).round(1)
+        # ── Figure layout ─────────────────────────────────────────────────────
+        fig = plt.figure(figsize=(20, 28), facecolor=BG)
+        gs  = gridspec.GridSpec(
+            5, 3, figure=fig,
+            top=0.955, bottom=0.02, left=0.04, right=0.97,
+            hspace=0.38, wspace=0.22,
+            height_ratios=[0.055, 1.0, 1.0, 0.04, 1.1]
+        )
 
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.axis("off")
-        table = ax.table(cellText=metrics.values, colLabels=metrics.columns,
-                         cellLoc="center", loc="center")
-        table.auto_set_font_size(False)
-        table.set_fontsize(10)
-        table.scale(1, 1.5)
+        # ── Header ────────────────────────────────────────────────────────────
+        ax_h = fig.add_subplot(gs[0, :])
+        ax_h.set_facecolor(BG); ax_h.axis("off")
+        date_vals = sorted(data["Date"].dropna().unique()) if "Date" in data.columns else []
+        date_str  = f"{date_vals[0]} – {date_vals[-1]}" if len(date_vals) > 1 else (date_vals[0] if date_vals else "")
+        n_pitches = len(data)
+        ax_h.text(0.5, 0.72, display_name, ha="center", va="center",
+                  fontsize=26, fontweight="bold", color=TEXT, fontfamily="sans-serif")
+        ax_h.text(0.5, 0.15,
+                  f"Pitch Report  ·  {n_pitches:,} pitches  ·  {date_str}",
+                  ha="center", va="center", fontsize=11, color=MUTED)
+        fig.add_artist(plt.Line2D([0.04, 0.96], [0.948, 0.948],
+                                  transform=fig.transFigure,
+                                  color=GOLD, linewidth=1.5, alpha=0.7))
 
-        plt.suptitle(f"{display_name}: Pitch Metrics", fontsize=14, y=0.95)
+        def _style_ax(ax, title=""):
+            ax.set_facecolor(CARD)
+            for sp in ax.spines.values():
+                sp.set_color("#333333")
+            ax.tick_params(colors=MUTED, labelsize=8)
+            ax.xaxis.label.set_color(MUTED)
+            ax.yaxis.label.set_color(MUTED)
+            if title:
+                ax.set_title(title, fontsize=10, fontweight="bold",
+                             color=GOLD, pad=6, loc="left")
 
+        def _ellipse_mpl(ax, x, y, color):
+            arr = np.column_stack([np.asarray(x, float), np.asarray(y, float)])
+            arr = arr[~np.isnan(arr).any(axis=1)]
+            if len(arr) < 4:
+                return
+            mean = arr.mean(axis=0)
+            try:
+                vals, vecs = np.linalg.eigh(np.cov(arr, rowvar=False))
+                a, b = np.sqrt(np.maximum(vals, 1e-9))
+                t = np.linspace(0, 2*np.pi, 80)
+                xy = np.column_stack([a*np.cos(t), b*np.sin(t)]) @ vecs
+                ax.fill(mean[0]+xy[:,0], mean[1]+xy[:,1],
+                        alpha=0.12, color=color, zorder=2)
+                ax.plot(mean[0]+xy[:,0], mean[1]+xy[:,1],
+                        "--", lw=1.2, alpha=0.55, color=color, zorder=3)
+            except Exception:
+                pass
+
+        # ── 1. Movement plot ──────────────────────────────────────────────────
+        ax_mv = fig.add_subplot(gs[1, 0:2])
+        _style_ax(ax_mv, "Movement — HB vs IVB")
+        for p in pitch_types:
+            sub = data[data["PitchType"]==p].dropna(subset=["HorzBreak","InducedVertBreak"])
+            if sub.empty: continue
+            c = _COLORS.get(p, "#9C8975")
+            ax_mv.scatter(sub["HorzBreak"], sub["InducedVertBreak"],
+                          c=c, s=18, alpha=0.65, edgecolors="none", zorder=4, label=f"{p} ({len(sub)})")
+            ax_mv.scatter(sub["HorzBreak"].mean(), sub["InducedVertBreak"].mean(),
+                          c=c, s=90, marker="*", edgecolors="white", linewidths=0.5, zorder=6)
+            _ellipse_mpl(ax_mv, sub["HorzBreak"], sub["InducedVertBreak"], c)
+        ax_mv.axhline(0, color="#444", lw=0.8, ls="--", zorder=1)
+        ax_mv.axvline(0, color="#444", lw=0.8, ls="--", zorder=1)
+        ax_mv.set_xlim(-25, 25); ax_mv.set_ylim(-25, 25)
+        ax_mv.set_aspect("equal")
+        ax_mv.set_xlabel("Horz Break (in)", fontsize=9)
+        ax_mv.set_ylabel("IVB (in)", fontsize=9)
+        ax_mv.grid(True, alpha=0.08, color="white")
+        leg = ax_mv.legend(loc="upper left", fontsize=8, framealpha=0.3,
+                           labelcolor=TEXT, facecolor=CARD, edgecolor="#333")
+
+        # ── 2. Release point ──────────────────────────────────────────────────
+        ax_rel = fig.add_subplot(gs[1, 2])
+        _style_ax(ax_rel, "Release Point")
+        for p in pitch_types:
+            sub = data[data["PitchType"]==p].dropna(subset=["RelSide","RelHeight"])
+            if sub.empty: continue
+            c = _COLORS.get(p, "#9C8975")
+            ax_rel.scatter(sub["RelSide"], sub["RelHeight"],
+                           c=c, s=14, alpha=0.60, edgecolors="none", zorder=4)
+            ax_rel.scatter(sub["RelSide"].mean(), sub["RelHeight"].mean(),
+                           c=c, s=80, marker="*", edgecolors="white", linewidths=0.5, zorder=6)
+        ax_rel.set_xlabel("RelSide (ft)", fontsize=9)
+        ax_rel.set_ylabel("RelHeight (ft)", fontsize=9)
+        ax_rel.set_xlim(-4, 6); ax_rel.set_ylim(2, 8)
+        ax_rel.grid(True, alpha=0.08, color="white")
+
+        # ── 3. KDE heatmaps ───────────────────────────────────────────────────
+        kde_cmap = LinearSegmentedColormap.from_list(
+            "ksu_kde", ["#141414", "#1a2a6c", "#b21f1f", "#fdbb2d"])
+        pitch_groups = [
+            ("Fastball / Sinker", ["Fastball","Sinker","Cutter"]),
+            ("Breaking",          ["Curveball","Slider","Sweeper"]),
+            ("Offspeed",          ["Changeup","Splitter"]),
+        ]
+        hm_axes = [fig.add_subplot(gs[2, i]) for i in range(3)]
+        for ax_hm, (label, gp_types) in zip(hm_axes, pitch_groups):
+            _style_ax(ax_hm, label)
+            gp_df = data[data["PitchType"].isin(gp_types)].dropna(
+                subset=["PlateLocSide","PlateLocHeight"])
+            n = len(gp_df)
+            ax_hm.set_title(f"{label}  ({n})", fontsize=9, fontweight="bold",
+                            color=GOLD, pad=5, loc="left")
+            if n >= 5:
+                x = gp_df["PlateLocSide"].values.astype(float)
+                y = gp_df["PlateLocHeight"].values.astype(float)
+                xi = np.linspace(-2.5, 2.5, 100)
+                yi = np.linspace(0.3, 5.0, 100)
+                xx, yy = np.meshgrid(xi, yi)
+                try:
+                    bw = max(0.12, 0.9*len(x)**(-1/5))
+                    k  = _gkde(np.vstack([x, y]), bw_method=bw)
+                    z  = k(np.vstack([xx.ravel(), yy.ravel()])).reshape(xx.shape)
+                    thr = z.max() * 0.04
+                    z_m = np.ma.masked_less(z, thr)
+                    ax_hm.pcolormesh(xi, yi, z_m, cmap=kde_cmap,
+                                     shading="gouraud", alpha=0.9, zorder=2)
+                except Exception:
+                    pass
+            for p in gp_types:
+                sub = data[data["PitchType"]==p].dropna(
+                    subset=["PlateLocSide","PlateLocHeight"])
+                if sub.empty: continue
+                c = _COLORS.get(p, "#9C8975")
+                ax_hm.scatter(sub["PlateLocSide"], sub["PlateLocHeight"],
+                              c=c, s=8, alpha=0.55, edgecolors="none", zorder=4)
+            sz = Rectangle((-0.83, 1.5), 1.66, 2.0,
+                           lw=2, edgecolor="white", facecolor="none", zorder=8)
+            ax_hm.add_patch(sz)
+            ax_hm.plot([0,0], [1.5,3.5], color="white", lw=0.8, ls=":", alpha=0.5, zorder=8)
+            ax_hm.plot([-0.83,0.83], [2.5,2.5], color="white", lw=0.8, ls=":", alpha=0.5, zorder=8)
+            ax_hm.set_xlim(-2.5, 2.5); ax_hm.set_ylim(0.3, 5.0)
+            ax_hm.set_aspect("equal")
+            ax_hm.set_xlabel("Side (ft)", fontsize=8)
+            ax_hm.set_ylabel("Height (ft)", fontsize=8)
+
+        # ── 4. Divider label ──────────────────────────────────────────────────
+        ax_div = fig.add_subplot(gs[3, :])
+        ax_div.set_facecolor(BG); ax_div.axis("off")
+        ax_div.text(0.5, 0.5, "PITCH METRICS", ha="center", va="center",
+                    fontsize=9, fontweight="bold", color=GOLD, letter_spacing=0.12,
+                    transform=ax_div.transAxes)
+
+        # ── 5. Stats table ────────────────────────────────────────────────────
+        ax_tbl = fig.add_subplot(gs[4, :])
+        ax_tbl.set_facecolor(BG); ax_tbl.axis("off")
+
+        grp = data.groupby("PitchType")
+        tbl_rows = []
+        for p in pitch_types:
+            sub = data[data["PitchType"]==p]
+            n   = len(sub)
+            usage = f"{n/len(data)*100:.1f}%"
+            velo  = f"{sub['RelSpeed'].mean():.1f}"  if "RelSpeed"         in sub else "—"
+            maxv  = f"{sub['RelSpeed'].max():.1f}"   if "RelSpeed"         in sub else "—"
+            ivb   = f"{sub['InducedVertBreak'].mean():.1f}" if "InducedVertBreak" in sub.columns else "—"
+            hb    = f"{sub['HorzBreak'].mean():.1f}" if "HorzBreak"        in sub.columns else "—"
+            spin  = f"{sub['SpinRate'].mean():.0f}"  if "SpinRate"         in sub.columns and sub['SpinRate'].notna().any() else "—"
+            ext   = f"{sub['Extension'].mean():.1f}" if "Extension"        in sub.columns else "—"
+            vaa   = f"{sub['VertApprAngle'].mean():.1f}" if "VertApprAngle" in sub.columns else "—"
+            # Stuff+
+            if not _plus_data.empty and p in _plus_data.index:
+                sp = _plus_data.loc[p, "Stuff+"] if "Stuff+" in _plus_data.columns else float("nan")
+                lp = _plus_data.loc[p, "Location+"] if "Location+" in _plus_data.columns else float("nan")
+                pp = _plus_data.loc[p, "Pitching+"] if "Pitching+" in _plus_data.columns else float("nan")
+                sp_s  = f"{sp:.1f}"  if pd.notna(sp)  else "—"
+                lp_s  = f"{lp:.1f}"  if pd.notna(lp)  else "—"
+                pp_s  = f"{pp:.1f}"  if pd.notna(pp)  else "—"
+            else:
+                sp_s = lp_s = pp_s = "—"
+            tbl_rows.append([p, str(n), usage, velo, maxv, ivb, hb, spin, ext, vaa, sp_s, lp_s, pp_s])
+
+        headers = ["Pitch", "N", "Usage%", "Velo", "MaxVelo", "IVB", "HB",
+                   "SpinRate", "Ext", "VAA", "Stuff+", "Loc+", "Pitch+"]
+
+        # Color helper
+        def _cell_color(val, pitch, col):
+            try: v = float(val)
+            except: return (CARD, TEXT)
+            # plus stats
+            if col in ("Stuff+","Loc+","Pitch+"):
+                norm = (v - 70) / (130 - 70)
+                norm = max(0, min(1, norm))
+            elif col == "Velo" and pitch in stat_ranges and "Vel" in stat_ranges[pitch]:
+                lo, hi, mid = stat_ranges[pitch]["Vel"]
+                norm = (v - lo) / (hi - lo) if hi > lo else 0.5
+                norm = max(0, min(1, norm))
+            elif col == "Ext" and pitch in stat_ranges:
+                lo, hi, mid = stat_ranges[pitch].get("Extension", (5.35, 7.0, 6.07))
+                norm = (v - lo) / (hi - lo) if hi > lo else 0.5
+                norm = max(0, min(1, norm))
+            else:
+                return (CARD, TEXT)
+            if norm < 0.5:
+                f2 = norm * 2
+                r = int(0   + (44 - 0)   * f2)
+                g = int(123 + (44 - 123) * f2)
+                b = int(255 + (44 - 255) * f2)
+            else:
+                f2 = (norm - 0.5) * 2
+                r = int(44  + (220 - 44)  * f2)
+                g = int(44  + (53  - 44)  * f2)
+                b = int(44  + (69  - 44)  * f2)
+            txt = "white" if (norm < 0.25 or norm > 0.75) else TEXT
+            return (f"#{r:02x}{g:02x}{b:02x}", txt)
+
+        # Draw table manually for full color control
+        n_rows = len(tbl_rows)
+        n_cols = len(headers)
+        row_h  = 0.072
+        col_w  = 1.0 / n_cols
+        y_start = 0.97
+
+        for ci, h in enumerate(headers):
+            x = ci * col_w
+            ax_tbl.add_patch(Rectangle((x, y_start - row_h), col_w, row_h,
+                                       transform=ax_tbl.transAxes,
+                                       facecolor="#0d1526", edgecolor="#2a2a2a", lw=0.5))
+            ax_tbl.text(x + col_w/2, y_start - row_h/2, h,
+                        ha="center", va="center", fontsize=8.5,
+                        fontweight="bold", color=GOLD,
+                        transform=ax_tbl.transAxes)
+
+        for ri, row in enumerate(tbl_rows):
+            pitch = row[0]
+            py = y_start - row_h * (ri + 2)
+            for ci, val in enumerate(row):
+                x = ci * col_w
+                col_name = headers[ci]
+                if ci == 0:
+                    bg  = _COLORS.get(pitch, "#555")
+                    txt = "white"
+                else:
+                    bg, txt = _cell_color(val, pitch, col_name)
+                ax_tbl.add_patch(Rectangle((x, py), col_w, row_h,
+                                           transform=ax_tbl.transAxes,
+                                           facecolor=bg, edgecolor="#222", lw=0.4))
+                ax_tbl.text(x + col_w/2, py + row_h/2, val,
+                            ha="center", va="center", fontsize=8.5,
+                            color=txt, fontweight="bold" if ci==0 else "normal",
+                            transform=ax_tbl.transAxes)
+
+        ax_tbl.set_xlim(0, 1); ax_tbl.set_ylim(0, 1)
+
+        # ── Save ──────────────────────────────────────────────────────────────
+        safe_name = display_name.replace(" ", "_").replace("/", "-")
         buf = io.BytesIO()
-        fig.savefig(buf, format="png", bbox_inches="tight", dpi=100)
+        fig.savefig(buf, format="png", bbox_inches="tight", dpi=150,
+                    facecolor=BG, edgecolor="none")
         buf.seek(0)
         plt.close(fig)
 
         return {
             "content": buf.getvalue(),
-            "filename": f"{display_name.replace(' ', '_')}_metrics_table.png",
+            "filename": f"{safe_name}_report.png",
             "media_type": "image/png"
         }
 
