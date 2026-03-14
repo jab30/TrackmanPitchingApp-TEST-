@@ -347,10 +347,26 @@ def _login_page(mobile: bool = False):
     card_class = "login-card mobile" if mobile else "login-card"
     return ui.div(
         ui.tags.style(_CSS),
+        ui.tags.script("""
+            function doLogin() {
+                var pw = document.getElementById('pw-input');
+                if (!pw) return;
+                Shiny.setInputValue('pw_val', pw.value, {priority: 'event'});
+                setTimeout(function() {
+                    Shiny.setInputValue('login_trigger', Math.random(), {priority: 'event'});
+                }, 60);
+            }
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && document.getElementById('pw-input') === document.activeElement) {
+                    e.preventDefault();
+                    doLogin();
+                }
+            });
+        """),
         ui.div(id="login-bg"),
         ui.div(
             ui.div(
-                ui.div("🦉",               class_="login-owl"),
+                ui.div("\U0001f989",       class_="login-owl"),
                 ui.div("KSU Baseball",     class_="login-title"),
                 ui.div("Analytics Portal", class_="login-sub"),
                 ui.tags.hr(                class_="login-divider"),
@@ -359,11 +375,14 @@ def _login_page(mobile: bool = False):
                     type="password",
                     placeholder="Enter password",
                     autocomplete="off",
-                    onkeydown="if(event.key==='Enter'){document.getElementById('login-btn').click();}",
                 ),
-                ui.input_action_button("login_btn", "Log In"),
+                ui.tags.button(
+                    "Log In",
+                    id="login-btn",
+                    onclick="doLogin();",
+                ),
                 ui.output_ui("error_out"),
-                ui.div("Kennesaw State University · Baseball Analytics", class_="login-footer"),
+                ui.div("Kennesaw State University \u00b7 Baseball Analytics", class_="login-footer"),
                 class_=card_class,
             ),
             id="login-wrap",
@@ -401,9 +420,12 @@ def server(input, output, session):
 
     # ── Password check ────────────────────────────────────────────────────────
     @reactive.effect
-    @reactive.event(input.login_btn)
+    @reactive.event(input.login_trigger)
     def _handle_login():
-        pw = input.pw_val() if hasattr(input, "pw_val") else ""
+        try:
+            pw = input.pw_val()
+        except Exception:
+            pw = ""
         ip = _get_ip(session)
         if pw == PASSWORD:
             _log_attempt(ip, True)
@@ -437,23 +459,7 @@ def server(input, output, session):
         is_mobile = (d == "mobile")
         return ui.div(
             _login_page(mobile=is_mobile),
-            ui.tags.script("""
-                (function() {
-                    function syncPw() {
-                        var val = document.getElementById('pw-input');
-                        if (val) Shiny.setInputValue('pw_val', val.value, {priority: 'event'});
-                    }
-                    document.addEventListener('keydown', function(e) {
-                        if (e.key === 'Enter') syncPw();
-                    });
-                    document.addEventListener('click', function(e) {
-                        if (e.target && e.target.id === 'login-btn') syncPw();
-                    });
-                    document.addEventListener('mousedown', function(e) {
-                        if (e.target && e.target.id === 'login-btn') syncPw();
-                    });
-                })();
-            """),
+
         )
 
     @render.ui
