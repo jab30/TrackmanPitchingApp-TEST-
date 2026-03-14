@@ -1226,28 +1226,13 @@ for _loc_dir in _LOC_MODEL_DIR_PATHS:
         break
 
 # Pre-compute reference distributions from full df for normalization
-_stuff_ref = {}
-try:
-    if _stuff_models and "PitchType" in df.columns:
-        _df_fb_ref = df[
-            (df["PitchType"].isin(["Fastball","Sinker"])) |
-            ((df["PitchType"] == "Cutter") & (df.get("primaryFB", pd.Series(dtype=str)) == "Cutter"))
-        ].copy()
-        _df_bb_ref = df[
-            (df["PitchType"].isin(["Curveball","Slider","Sweeper"])) |
-            ((df["PitchType"] == "Cutter") & (df.get("primaryFB", pd.Series(dtype=str)) != "Cutter"))
-        ].copy()
-        _df_os_ref = df[df["PitchType"].isin(["Changeup","Splitter"])].copy()
-        for _key, _ref_df in [("fb", _df_fb_ref), ("bb", _df_bb_ref), ("os", _df_os_ref)]:
-            _m = _stuff_models.get(_key)
-            if _m is not None and len(_ref_df) > 0:
-                _feat = _m.feature_names_in_
-                _clean = _ref_df.dropna(subset=_feat)
-                if len(_clean) > 0:
-                    _preds = _m.predict_proba(_clean[_feat])[:, 1]
-                    _stuff_ref[_key] = {"mean": _preds.mean(), "std": _preds.std()}
-except Exception as _e:
-    print(f"Stuff+ ref computation error: {_e}")
+# D1-wide reference distribution — computed from 1,017,946 pitches (2026 season)
+# Hardcoded so Stuff+ is always relative to D1 average, not just local CSV sample
+_stuff_ref = {
+    "fb": {"mean": 0.183801, "std": 0.057469},
+    "bb": {"mean": 0.320243, "std": 0.049292},
+    "os": {"mean": 0.328343, "std": 0.069438},
+}
 
 
 def _predict_stuff_plus(data: "pd.DataFrame") -> "pd.DataFrame":
