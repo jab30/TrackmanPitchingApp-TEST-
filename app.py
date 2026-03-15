@@ -4582,202 +4582,176 @@ def server(input, output, session):
 
     # ── Pitch Plinko ──────────────────────────────────────────────────────────
     def _build_plinko_html(data):
-        """Build pitch plinko SVG: diamond count layout, donut nodes, thickness=volume."""
+        """Pitch Plinko: interactive Plotly scatter with hover tooltips and donut images."""
+        import math, plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
         if data.empty:
             return "<div style='color:#888;padding:20px;'>No data</div>"
-
-        needed = ["Balls","Strikes","PitchType","BatterSide"]
-        for c in needed:
+        for c in ["Balls","Strikes","PitchType","BatterSide"]:
             if c not in data.columns:
-                return f"<div style='color:#888;padding:20px;'>Missing column: {c}</div>"
+                return f"<div style='color:#888;padding:20px;'>Missing: {c}</div>"
 
         data = data.copy()
         data["Balls"]   = pd.to_numeric(data["Balls"],   errors="coerce").fillna(0).astype(int)
         data["Strikes"] = pd.to_numeric(data["Strikes"], errors="coerce").fillna(0).astype(int)
         data["count_str"] = data["Balls"].astype(str) + "-" + data["Strikes"].astype(str)
 
-        # Valid counts in diamond layout
-        valid_counts = ["0-0","0-1","0-2","1-0","1-1","1-2","2-0","2-1","2-2","3-0","3-1","3-2"]
-
-        # Diamond positions (col, row) — col=balls-strikes offset, row=balls+strikes
-        # x = balls - strikes (centered), y = balls + strikes (depth)
-        count_pos = {
-            "0-0": (0, 0),
-            "0-1": (-1,1), "1-0": (1,1),
-            "0-2": (-2,2), "1-1": (0,2), "2-0": (2,2),
-            "1-2": (-1,3), "2-1": (1,3), "3-0": (3,3),
-            "2-2": (0,4),  "3-1": (2,4),
-            "3-2": (1,5),
-        }
-
         COLORS = pitch_colors_dict
         PITCH_ORDER = ["Fastball","Sinker","Cutter","Slider","Sweeper","Curveball","Changeup","Splitter"]
 
-        def build_side(df_side, side_label, n_total, x_offset=0):
-            """Returns SVG elements string for one side (LHH or RHH)."""
-            W, H = 520, 620
-            NODE_R = 38
-            GAP_X, GAP_Y = 105, 95
-            CX, CY = W//2, 55  # center x, top y
+        # Diamond layout: x=balls-strikes, y=-(balls+strikes) so 0-0 is at top
+        count_pos = {
+            "0-0": (0, 0),
+            "0-1": (-1,-1), "1-0": (1,-1),
+            "0-2": (-2,-2), "1-1": (0,-2), "2-0": (2,-2),
+            "1-2": (-1,-3), "2-1": (1,-3), "3-0": (3,-3),
+            "2-2": (0,-4),  "3-1": (2,-4),
+            "3-2": (1,-5),
+        }
+        transitions = {
+            "0-0":["0-1","1-0"],"0-1":["0-2","1-1"],"1-0":["1-1","2-0"],
+            "0-2":["1-2"],"1-1":["1-2","2-1"],"2-0":["2-1","3-0"],
+            "1-2":["2-2"],"2-1":["2-2","3-1"],"3-0":["3-1"],
+            "2-2":["3-2"],"3-1":["3-2"],
+        }
 
-            # Map count → pixel center
-            def count_to_xy(cnt):
-                gx, gy = count_pos[cnt]
-                return CX + gx * GAP_X + x_offset, CY + gy * GAP_Y
-
-            # Count frequencies
+        def _side_traces(df_side, x_shift, gold):
+            traces = []
+            if df_side.empty:
+                return traces
             count_freq = df_side["count_str"].value_counts()
             total = len(df_side)
             max_freq = count_freq.max() if len(count_freq) > 0 else 1
 
-            # Build connection edges
-            transitions = {
-                "0-0": ["0-1","1-0"],
-                "0-1": ["0-2","1-1"],
-                "1-0": ["1-1","2-0"],
-                "0-2": ["1-2"],
-                "1-1": ["1-2","2-1"],
-                "2-0": ["2-1","3-0"],
-                "1-2": ["2-2"],
-                "2-1": ["2-2","3-1"],
-                "3-0": ["3-1"],
-                "2-2": ["3-2"],
-                "3-1": ["3-2"],
-            }
-
-            svg_lines = []
-
-            # Draw edges first (behind nodes)
+            # Edge traces
             for src, dsts in transitions.items():
-                freq_src = count_freq.get(src, 0)
-                x1, y1 = count_to_xy(src)
                 for dst in dsts:
-                    freq_dst = count_freq.get(dst, 0)
-                    weight = (freq_src + freq_dst) / 2
-                    thickness = max(1.5, min(14, (weight / max(max_freq, 1)) * 14))
-                    x2, y2 = count_to_xy(dst)
-                    opacity = 0.35 + 0.45 * (weight / max(max_freq, 1))
-                    svg_lines.append(
-                        f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#888" stroke-width="{thickness:.1f}" stroke-opacity="{opacity:.2f}"/>')
+                    f1 = count_freq.get(src, 0)
+                    f2 = count_freq.get(dst, 0)
+                    w  = (f1 + f2) / 2
+                    thick = max(1.5, min(10, (w / max_freq) * 10))
+                    x1,y1 = count_pos[src]; x2,y2 = count_pos[dst]
+                    traces.append(go.Scatter(
+                        x=[x1+x_shift, x2+x_shift], y=[y1, y2],
+                        mode="lines",
+                        line=dict(color="#666", width=thick),
+                        showlegend=False, hoverinfo="skip",
+                    ))
 
-            # Draw donut nodes
-            for cnt in valid_counts:
-                x, y = count_to_xy(cnt)
+            # Node traces — one scatter point per count
+            node_x, node_y, node_text, node_hover, node_size, node_color = [],[],[],[],[],[]
+            for cnt in count_pos:
+                gx, gy = count_pos[cnt]
                 freq = count_freq.get(cnt, 0)
-                pct = freq / total * 100 if total > 0 else 0
+                pct  = freq / total * 100 if total > 0 else 0
+                x, y = gx + x_shift, gy
 
-                if freq == 0:
-                    # Ghost node
-                    svg_lines.append(
-                        f'<circle cx="{x}" cy="{y}" r="{NODE_R}" fill="none" stroke="#444" stroke-width="1.5" stroke-dasharray="4,3"/>')
-                    svg_lines.append(
-                        f'<text x="{x}" y="{y-NODE_R-6}" text-anchor="middle" fill="#555" font-size="10" font-family="sans-serif">{cnt}</text>')
-                    continue
-
-                # Pitch type breakdown for this count
+                # Hover text: pitch breakdown
                 pitch_counts = df_side[df_side["count_str"]==cnt]["PitchType"].value_counts()
-                pitch_total  = pitch_counts.sum()
-
-                # Build donut arcs
-                OUTER_R = NODE_R
-                INNER_R = NODE_R * 0.58
-                angle = -90.0  # start at top
-                arcs = []
+                pt_lines = [f"<b>{cnt} Count</b>  {freq} pitches"]
                 for pt in PITCH_ORDER + [p for p in pitch_counts.index if p not in PITCH_ORDER]:
                     n = pitch_counts.get(pt, 0)
-                    if n == 0:
-                        continue
-                    sweep = (n / pitch_total) * 360
-                    color = COLORS.get(pt, "#9C8975")
-                    start_rad = angle * 3.14159265 / 180
-                    end_rad   = (angle + sweep) * 3.14159265 / 180
-                    x1a = x + OUTER_R * __import__("math").cos(start_rad)
-                    y1a = y + OUTER_R * __import__("math").sin(start_rad)
-                    x2a = x + OUTER_R * __import__("math").cos(end_rad)
-                    y2a = y + OUTER_R * __import__("math").sin(end_rad)
-                    xi1 = x + INNER_R * __import__("math").cos(end_rad)
-                    yi1 = y + INNER_R * __import__("math").sin(end_rad)
-                    xi2 = x + INNER_R * __import__("math").cos(start_rad)
-                    yi2 = y + INNER_R * __import__("math").sin(start_rad)
-                    large = 1 if sweep > 180 else 0
-                    path = (
-                        f"M {x1a:.1f} {y1a:.1f} "
-                        f"A {OUTER_R} {OUTER_R} 0 {large} 1 {x2a:.1f} {y2a:.1f} "
-                        f"L {xi1:.1f} {yi1:.1f} "
-                        f"A {INNER_R} {INNER_R} 0 {large} 0 {xi2:.1f} {yi2:.1f} Z"
-                    )
-                    arcs.append(f'<path d="{path}" fill="{color}"/>')
-                    angle += sweep
+                    if n == 0: continue
+                    pt_lines.append(f"{pt}:  {n} ({n/freq*100:.1f}%)" if freq>0 else pt)
+                hover_txt = "<br>".join(pt_lines)
 
-                svg_lines.extend(arcs)
+                node_x.append(x); node_y.append(y)
+                node_text.append(f"{pct:.0f}%" if freq > 0 else "")
+                node_hover.append(hover_txt)
+                node_size.append(max(20, min(52, 18 + (freq/max_freq)*34)))
+                node_color.append(gold if freq > 0 else "#333")
 
-                # White inner fill
-                svg_lines.append(
-                    f'<circle cx="{x}" cy="{y}" r="{INNER_R}" fill="#1e1e1e"/>')
+            traces.append(go.Scatter(
+                x=node_x, y=node_y,
+                mode="markers+text",
+                marker=dict(size=node_size, color=node_color, opacity=0.92,
+                            line=dict(color="#1e1e1e", width=2)),
+                text=node_text,
+                textfont=dict(color="#E8E8E8", size=9, family="sans-serif"),
+                textposition="middle center",
+                hovertemplate="%{customdata}<extra></extra>",
+                customdata=node_hover,
+                showlegend=False,
+            ))
 
-                # Count label above node
-                svg_lines.append(
-                    f'<text x="{x}" y="{y-NODE_R-5}" text-anchor="middle" fill="#FA4616" font-size="10" font-weight="bold" font-family="sans-serif">{cnt}</text>')
+            # Count labels (above each node)
+            lbl_x, lbl_y, lbl_text = [], [], []
+            for cnt in count_pos:
+                gx, gy = count_pos[cnt]
+                lbl_x.append(gx + x_shift)
+                lbl_y.append(gy + 0.38)
+                lbl_text.append(cnt)
+            traces.append(go.Scatter(
+                x=lbl_x, y=lbl_y,
+                mode="text",
+                text=lbl_text,
+                textfont=dict(color=gold, size=9, family="sans-serif"),
+                showlegend=False, hoverinfo="skip",
+            ))
+            return traces
 
-                # Percentage inside
-                svg_lines.append(
-                    f'<text x="{x}" y="{y+4}" text-anchor="middle" fill="#E8E8E8" font-size="11" font-weight="bold" font-family="sans-serif">{pct:.0f}%</text>')
-
-            return "\n".join(svg_lines), W, H
-
-        # Split by batter hand
-        lhh = data[data["BatterSide"].str.upper().str.startswith("L")] if "BatterSide" in data.columns else pd.DataFrame()
-        rhh = data[data["BatterSide"].str.upper().str.startswith("R")] if "BatterSide" in data.columns else pd.DataFrame()
+        lhh = data[data["BatterSide"].str.upper().str.startswith("L")]
+        rhh = data[data["BatterSide"].str.upper().str.startswith("R")]
         n_total = len(data)
-        n_lhh = len(lhh)
-        n_rhh = len(rhh)
+        gold = "#FDBB30"
 
-        SVG_W, SVG_H = 1100, 680
+        fig = go.Figure()
 
-        import math
+        # LHH at x_shift=-3.5, RHH at x_shift=3.5
+        for t in _side_traces(lhh, -3.5, gold):
+            fig.add_trace(t)
+        for t in _side_traces(rhh,  3.5, gold):
+            fig.add_trace(t)
 
-        def _build_side_svg(df_side, label, n, n_total, x_off):
-            if df_side.empty:
-                return f'<text x="{x_off+260}" y="40" text-anchor="middle" fill="#888" font-size="13" font-family="sans-serif">No {label} data</text>'
-            elems, w, h = build_side(df_side, label, n, x_off)
-            pct = n/n_total*100 if n_total > 0 else 0
-            header = (
-                f'<text x="{x_off+260}" y="26" text-anchor="middle" fill="#E8E8E8" font-size="13" font-weight="bold" font-family="sans-serif">vs {label} ({n:,} pitches, {pct:.1f}%)</text>'
+        # Side headers
+        def hdr(df_side, label, x_shift):
+            n = len(df_side)
+            pct = n/n_total*100 if n_total>0 else 0
+            return go.Scatter(
+                x=[x_shift], y=[0.7],
+                mode="text",
+                text=[f"<b>vs {label}</b> ({n:,} pitches, {pct:.1f}%)"],
+                textfont=dict(color="#E8E8E8", size=11),
+                showlegend=False, hoverinfo="skip",
             )
-            return header + "\n" + elems
+        fig.add_trace(hdr(lhh, "LHH", -3.5))
+        fig.add_trace(hdr(rhh, "RHH",  3.5))
 
-        lhh_svg = _build_side_svg(lhh, "LHH", n_lhh, n_total, 20)
-        rhh_svg = _build_side_svg(rhh, "RHH", n_rhh, n_total, 570)
+        # Divider line
+        fig.add_shape(type="line", x0=0, x1=0, y0=0.55, y1=-5.5,
+                      line=dict(color="#333", width=1))
 
         # Legend
-        legend_items = []
-        used_types = data["PitchType"].dropna().unique()
-        lx = 20
-        for pt in PITCH_ORDER:
-            if pt not in used_types:
-                continue
-            color = COLORS.get(pt, "#9C8975")
-            legend_items.append(
-                f'<rect x="{lx}" y="{SVG_H-28}" width="12" height="12" fill="{color}" rx="2"/>')
-            legend_items.append(
-                f'<text x="{lx+16}" y="{SVG_H-18}" fill="#E8E8E8" font-size="11" font-family="sans-serif">{pt}</text>')
-            lx += len(pt)*7 + 30
+        used = data["PitchType"].dropna().unique()
+        for i, pt in enumerate([p for p in PITCH_ORDER if p in used]):
+            fig.add_trace(go.Scatter(
+                x=[None], y=[None], mode="markers",
+                marker=dict(color=COLORS.get(pt,"#9C8975"), size=10, symbol="square"),
+                name=pt, showlegend=True,
+            ))
 
-        title_svg = (
-            f'<text x="{SVG_W//2}" y="18" text-anchor="middle" fill="#E8E8E8" font-size="15" font-weight="bold" font-family="sans-serif">Pitch Plinko</text>'
-            f'<text x="{SVG_W//2}" y="35" text-anchor="middle" fill="#888" font-size="10" font-family="sans-serif">Connection Thickness = Amount of Pitches</text>'
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="#1e1e1e",
+            plot_bgcolor="#1e1e1e",
+            font=dict(color="#E8E8E8", size=11),
+            height=480,
+            margin=dict(l=10, r=10, t=40, b=50),
+            title=dict(
+                text="Pitch Plinko  <span style=\'font-size:10px;color:#888\'>Connection Thickness = Amount of Pitches</span>",
+                font=dict(size=13, color=gold), x=0.5, xanchor="center"
+            ),
+            xaxis=dict(visible=False, range=[-7.5, 7.5]),
+            yaxis=dict(visible=False, range=[-6.2, 1.1]),
+            hovermode="closest",
+            legend=dict(orientation="h", y=-0.04, x=0.5, xanchor="center",
+                        font=dict(size=10)),
         )
 
-        divider = f'<line x1="550" y1="45" x2="550" y2="{SVG_H-40}" stroke="#333" stroke-width="1"/>'
+        return fig.to_html(full_html=False, include_plotlyjs=False,
+                           config={"displayModeBar": False})
 
-        svg = (
-            f'<svg width="100%" viewBox="0 0 {SVG_W} {SVG_H}" xmlns="http://www.w3.org/2000/svg" style="background:#1e1e1e;border-radius:8px;">' +
-            title_svg + divider +
-            lhh_svg + rhh_svg +
-            "\n".join(legend_items) +
-            "</svg>"
-        )
-        return svg
 
     @output
     @render.ui
