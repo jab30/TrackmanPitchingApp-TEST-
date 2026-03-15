@@ -2119,11 +2119,7 @@ app_ui = ui.page_sidebar(
                 ui.column(6, ui.div(ui.output_ui("everything_movement_plot"), class_="section-card")),
                 ui.column(6, ui.div(ui.output_ui("everything_release_plot"), class_="section-card")),
             ),
-            ui.div(
-                ui.div("Pitch Plinko", class_="section-card-title"),
-                ui.output_ui("everything_plinko"),
-                class_="section-card"
-            ),
+
             ui.row(
                 ui.column(6, ui.div(ui.output_ui("everything_velocity_plot"), class_="section-card")),
                 ui.column(6, ui.div(ui.output_ui("everything_location_plot"), class_="section-card")),
@@ -2166,11 +2162,7 @@ app_ui = ui.page_sidebar(
                 ui.column(6, ui.div(ui.output_ui("data_movement_plot"), class_="section-card")),
                 ui.column(6, ui.div(ui.output_ui("data_release_plot"), class_="section-card")),
             ),
-            ui.div(
-                ui.div("Pitch Plinko", class_="section-card-title"),
-                ui.output_ui("data_plinko"),
-                class_="section-card"
-            ),
+
         ),
 
         ui.nav_panel("Plots",
