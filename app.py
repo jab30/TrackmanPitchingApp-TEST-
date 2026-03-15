@@ -4582,7 +4582,7 @@ def server(input, output, session):
 
     # ── Pitch Plinko ──────────────────────────────────────────────────────────
     def _build_plinko_html(data):
-        """Pitch Plinko: SVG donuts + JS tooltip on hover."""
+        """Pitch Plinko: SVG donuts + JS tooltip on hover (nodes + connectors)."""
         import math
 
         if data.empty:
@@ -4595,6 +4595,21 @@ def server(input, output, session):
         data["Balls"]   = pd.to_numeric(data["Balls"],   errors="coerce").fillna(0).astype(int)
         data["Strikes"] = pd.to_numeric(data["Strikes"], errors="coerce").fillna(0).astype(int)
         data["count_str"] = data["Balls"].astype(str) + "-" + data["Strikes"].astype(str)
+
+        # Precompute next count after ball/strike
+        next_count = {}
+        for b in range(4):
+            for s in range(3):
+                c = f"{b}-{s}"
+                if s < 2:
+                    next_count[(c,"strike")] = f"{b}-{s+1}"
+                if b < 3:
+                    next_count[(c,"ball")]   = f"{b+1}-{s}"
+
+        # Map edge (src,dst) → outcome label
+        edge_outcome = {}
+        for (cnt, outcome), nxt in next_count.items():
+            edge_outcome[(cnt, nxt)] = outcome
 
         COLORS = pitch_colors_dict
         PITCH_ORDER = ["Fastball","Sinker","Cutter","Slider","Sweeper","Curveball","Changeup","Splitter"]
@@ -4614,8 +4629,8 @@ def server(input, output, session):
             "2-2":["3-2"],"3-1":["3-2"],
         }
 
-        GAP_X, GAP_Y = 90, 88
-        NODE_R = 30
+        GAP_X, GAP_Y = 82, 80
+        NODE_R = 27
         INNER_R = int(NODE_R * 0.58)
 
         def count_xy(cnt, cx, cy):
@@ -4630,8 +4645,7 @@ def server(input, output, session):
                 if n == 0: continue
                 sweep = (n/pitch_total)*360
                 color = COLORS.get(pt, "#9C8975")
-                a1 = math.radians(angle)
-                a2 = math.radians(angle + sweep)
+                a1 = math.radians(angle); a2 = math.radians(angle + sweep)
                 x1o = cx + NODE_R*math.cos(a1); y1o = cy + NODE_R*math.sin(a1)
                 x2o = cx + NODE_R*math.cos(a2); y2o = cy + NODE_R*math.sin(a2)
                 x1i = cx + INNER_R*math.cos(a2); y1i = cy + INNER_R*math.sin(a2)
@@ -4649,7 +4663,7 @@ def server(input, output, session):
             total = len(df_side)
             max_freq = count_freq.max() if len(count_freq) > 0 else 1
 
-            # Edges
+            # Edges — with hover tooltip
             for src, dsts in transitions.items():
                 for dst in dsts:
                     f1 = count_freq.get(src, 0); f2 = count_freq.get(dst, 0)
@@ -4657,8 +4671,33 @@ def server(input, output, session):
                     thick = max(1.5, min(11, (w/max_freq)*11))
                     x1,y1 = count_xy(src,cx,cy); x2,y2 = count_xy(dst,cx,cy)
                     op = 0.3 + 0.5*(w/max_freq)
+                    outcome = edge_outcome.get((src, dst), "")
+                    outcome_label = "Strike" if outcome == "strike" else "Ball" if outcome == "ball" else ""
+                    # Build edge tooltip: transition + pitch breakdown on pitches thrown from src that went to dst
+                    edge_tip = f"{src} \u2192 {dst} ({outcome_label})&#10;{f2} pitches"
+                    if f2 > 0 and not df_side.empty:
+                        # Pitches in the src count that resulted in this transition
+                        src_pitches = df_side[df_side["count_str"] == src]
+                        if outcome == "strike":
+                            strike_calls = {"StrikeCalled","StrikeSwinging","FoulBall","FoulBallFieldable","FoulBallNotFieldable"}
+                            trans_pitches = src_pitches[src_pitches["PitchCall"].isin(strike_calls)] if "PitchCall" in src_pitches.columns else src_pitches.iloc[0:0]
+                        elif outcome == "ball":
+                            trans_pitches = src_pitches[src_pitches["PitchCall"] == "BallCalled"] if "PitchCall" in src_pitches.columns else src_pitches.iloc[0:0]
+                        else:
+                            trans_pitches = src_pitches.iloc[0:0]
+                        if len(trans_pitches) > 0 and "PitchType" in trans_pitches.columns:
+                            pt_counts = trans_pitches["PitchType"].value_counts()
+                            for pt in PITCH_ORDER + [p for p in pt_counts.index if p not in PITCH_ORDER]:
+                                n = pt_counts.get(pt, 0)
+                                if n > 0:
+                                    edge_tip += f"&#10;  {pt}: {n} ({n/len(trans_pitches)*100:.1f}%)"
+                    # Wider invisible hit area
+                    mx, my = (x1+x2)/2, (y1+y2)/2
                     elems.append(f'<line x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}" '
                                  f'stroke="white" stroke-width="{thick:.1f}" stroke-opacity="{op:.2f}"/>')
+                    elems.append(f'<line x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}" '
+                                 f'stroke="transparent" stroke-width="14" class="plinko-edge" '
+                                 f'data-tip="{edge_tip}" style="cursor:crosshair;"/>')
 
             # Nodes
             for cnt in count_pos:
@@ -4667,7 +4706,6 @@ def server(input, output, session):
                 pct   = freq/total*100 if total>0 else 0
                 pitch_counts = df_side[df_side["count_str"]==cnt]["PitchType"].value_counts() if not df_side.empty else pd.Series(dtype=int)
 
-                # Tooltip data
                 pt_lines = [f"{cnt} Count \u2014 {freq} pitches"]
                 for pt in PITCH_ORDER + [p for p in pitch_counts.index if p not in PITCH_ORDER]:
                     n = pitch_counts.get(pt,0)
@@ -4678,24 +4716,19 @@ def server(input, output, session):
                 if freq == 0:
                     elems.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="{NODE_R}" '
                                  f'fill="none" stroke="#444" stroke-width="1.5" stroke-dasharray="4,3"/>')
-                    elems.append(f'<text x="{x:.0f}" y="{y-NODE_R-5:.0f}" text-anchor="middle" '
-                                 f'fill="#555" font-size="9" font-family="sans-serif">{cnt}</text>')
+                    elems.append(f'<text x="{x:.0f}" y="{y-NODE_R-4:.0f}" text-anchor="middle" '
+                                 f'fill="#555" font-size="8" font-family="sans-serif">{cnt}</text>')
                     continue
 
-                # Donut arcs
                 elems.extend(donut_arcs(x, y, pitch_counts, freq))
-                # Inner circle
                 elems.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="{INNER_R}" fill="#1e1e1e"/>')
-                # Invisible hit area for hover
                 elems.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="{NODE_R}" '
                               f'fill="transparent" class="plinko-node" '
                               f'data-tip="{tooltip}" style="cursor:pointer;"/>')
-                # Count label
-                elems.append(f'<text x="{x:.0f}" y="{y-NODE_R-5:.0f}" text-anchor="middle" '
-                              f'fill="#FA4616" font-size="9" font-weight="bold" font-family="sans-serif">{cnt}</text>')
-                # Pct label
+                elems.append(f'<text x="{x:.0f}" y="{y-NODE_R-4:.0f}" text-anchor="middle" '
+                              f'fill="#FA4616" font-size="8" font-weight="bold" font-family="sans-serif">{cnt}</text>')
                 elems.append(f'<text x="{x:.0f}" y="{y+4:.0f}" text-anchor="middle" '
-                              f'fill="#E8E8E8" font-size="10" font-weight="bold" font-family="sans-serif">{pct:.0f}%</text>')
+                              f'fill="#E8E8E8" font-size="9" font-weight="bold" font-family="sans-serif">{pct:.0f}%</text>')
 
             return "\n".join(elems)
 
@@ -4703,35 +4736,36 @@ def server(input, output, session):
         rhh = data[data["BatterSide"].str.upper().str.startswith("R")]
         n_total = len(data)
 
-        W, H = 1060, 640
-        LCX, RCX = 220, 750
-        CY = 55
+        W, H = 1000, 600
+        LCX, RCX = 205, 710
+        CY = 52
 
         def hdr(df_s, label, cx):
             n = len(df_s); pct = n/n_total*100 if n_total>0 else 0
-            return (f'<text x="{cx}" y="28" text-anchor="middle" fill="#E8E8E8" '
-                    f'font-size="12" font-weight="bold" font-family="sans-serif">'
+            return (f'<text x="{cx}" y="26" text-anchor="middle" fill="#E8E8E8" '
+                    f'font-size="11" font-weight="bold" font-family="sans-serif">'
                     f'vs {label} ({n:,} pitches, {pct:.1f}%)</text>')
 
         lhh_svg = build_side(lhh, LCX, CY)
         rhh_svg = build_side(rhh, RCX, CY)
 
-        # Legend
-        used = data["PitchType"].dropna().unique()
+        # Centered legend
+        used = [pt for pt in PITCH_ORDER if pt in data["PitchType"].dropna().unique()]
+        leg_total_w = sum(len(pt)*6.5 + 26 for pt in used)
+        leg_start = (W - leg_total_w) / 2
         leg_items = []
-        lx = 30
-        for pt in PITCH_ORDER:
-            if pt not in used: continue
+        lx = leg_start
+        for pt in used:
             c = COLORS.get(pt,"#9C8975")
-            leg_items.append(f'<rect x="{lx}" y="{H-30}" width="11" height="11" fill="{c}" rx="2"/>')
-            leg_items.append(f'<text x="{lx+15}" y="{H-21}" fill="#E8E8E8" font-size="10" font-family="sans-serif">{pt}</text>')
-            lx += len(pt)*7 + 28
+            leg_items.append(f'<rect x="{lx:.0f}" y="{H-26}" width="10" height="10" fill="{c}" rx="2"/>')
+            leg_items.append(f'<text x="{lx+14:.0f}" y="{H-18}" fill="#E8E8E8" font-size="10" font-family="sans-serif">{pt}</text>')
+            lx += len(pt)*6.5 + 26
 
-        divider = f'<line x1="490" y1="40" x2="490" y2="{H-45}" stroke="#333" stroke-width="1"/>'
-        title   = (f'<text x="{W//2}" y="16" text-anchor="middle" fill="#E8E8E8" '
-                   f'font-size="13" font-weight="bold" font-family="sans-serif">Pitch Plinko</text>'
-                   f'<text x="{W//2}" y="30" text-anchor="middle" fill="#888" '
-                   f'font-size="9" font-family="sans-serif">Connection Thickness = Amount of Pitches</text>')
+        divider = f'<line x1="460" y1="38" x2="460" y2="{H-42}" stroke="#333" stroke-width="1"/>'
+        title   = (f'<text x="{W//2}" y="14" text-anchor="middle" fill="#E8E8E8" '
+                   f'font-size="12" font-weight="bold" font-family="sans-serif">Pitch Plinko</text>'
+                   f'<text x="{W//2}" y="27" text-anchor="middle" fill="#888" '
+                   f'font-size="8" font-family="sans-serif">Connection Thickness = Amount of Pitches</text>')
 
         svg = (f'<svg id="plinko-svg" width="100%" viewBox="0 0 {W} {H}" '
                f'xmlns="http://www.w3.org/2000/svg" style="background:#1e1e1e;border-radius:8px;">'
@@ -4747,29 +4781,25 @@ def server(input, output, session):
     color:#E8E8E8;border:1px solid #555;border-radius:8px;
     padding:10px 14px;font-size:12px;font-family:sans-serif;
     pointer-events:none;z-index:9999;line-height:1.8;
-    box-shadow:0 4px 20px rgba(0,0,0,0.7);white-space:pre;
-    min-width:180px;
+    box-shadow:0 4px 20px rgba(0,0,0,0.7);white-space:pre;min-width:180px;
 "></div>
 <script>
 (function(){
     function initPlinko(){
-        var nodes = document.querySelectorAll('.plinko-node');
-        var tip   = document.getElementById('plinko-tooltip');
-        if(!tip || nodes.length===0){ setTimeout(initPlinko,400); return; }
-        nodes.forEach(function(n){
+        var els = document.querySelectorAll('.plinko-node, .plinko-edge');
+        var tip = document.getElementById('plinko-tooltip');
+        if(!tip || els.length===0){ setTimeout(initPlinko,400); return; }
+        els.forEach(function(n){
             n.addEventListener('mouseenter', function(e){
                 tip.innerText = n.getAttribute('data-tip').replace(/&#10;/g,'\\n');
                 tip.style.display = 'block';
             });
             n.addEventListener('mousemove', function(e){
                 var tx = e.clientX+16, ty = e.clientY-10;
-                if(tx + 220 > window.innerWidth) tx = e.clientX - 230;
-                tip.style.left = tx+'px';
-                tip.style.top  = ty+'px';
+                if(tx + 230 > window.innerWidth) tx = e.clientX - 240;
+                tip.style.left = tx+'px'; tip.style.top = ty+'px';
             });
-            n.addEventListener('mouseleave', function(){
-                tip.style.display = 'none';
-            });
+            n.addEventListener('mouseleave', function(){ tip.style.display='none'; });
         });
     }
     setTimeout(initPlinko, 300);
@@ -4777,6 +4807,8 @@ def server(input, output, session):
 </script>"""
 
         return svg + js
+
+
 
 
 
