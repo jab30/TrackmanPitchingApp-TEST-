@@ -2214,6 +2214,33 @@ app_ui = ui.page_sidebar(
             ),
         ),
 
+        ui.nav_panel("Trends",
+            ui.div(
+                ui.input_numeric("trends_window", "Rolling Window (pitches)", value=25, min=5, max=200, step=5),
+                style="padding: 8px 18px 0;"
+            ),
+            ui.div(
+                ui.div("Rolling Stuff+ (Arsenal)", class_="section-card-title"),
+                ui.output_ui("trends_stuffplus_arsenal"),
+                class_="section-card"
+            ),
+            ui.div(
+                ui.div("Rolling Stuff+ by Pitch Type", class_="section-card-title"),
+                ui.output_ui("trends_stuffplus_by_pitch"),
+                class_="section-card"
+            ),
+            ui.div(
+                ui.div("Rolling Zone% & Strike%", class_="section-card-title"),
+                ui.output_ui("trends_zone_strike"),
+                class_="section-card"
+            ),
+            ui.div(
+                ui.div("Rolling Whiff% & wOBA", class_="section-card-title"),
+                ui.output_ui("trends_whiff_woba"),
+                class_="section-card"
+            ),
+        ),
+
         id="main_tabs"
     ),
 )
@@ -4354,6 +4381,176 @@ def server(input, output, session):
     @render.ui
     def leaderboard_stats_table():
         return create_leaderboard_stats_table()
+
+    # ── Trends tab renders ────────────────────────────────────────────────────
+    def _build_trends_data():
+        """Get pitch-level data with stuff_plus, sorted by date+PitchNo."""
+        data = filtered_data()
+        if data.empty:
+            return pd.DataFrame()
+        # Add stuff_plus if not present
+        if "stuff_plus" not in data.columns and _stuff_models:
+            try:
+                data = _predict_stuff_plus(data)
+            except Exception:
+                data["stuff_plus"] = float("nan")
+        # Sort chronologically
+        sort_cols = [c for c in ["Date", "PitchNo"] if c in data.columns]
+        if sort_cols:
+            data = data.sort_values(sort_cols).reset_index(drop=True)
+        data["_pitch_idx"] = range(1, len(data) + 1)
+        return data
+
+    def _rolling_line_fig(title=""):
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="#1e1e1e",
+            plot_bgcolor="#1e1e1e",
+            font=dict(color="#E8E8E8", size=11),
+            margin=dict(l=40, r=20, t=30, b=40),
+            height=280,
+            title=dict(text=title, font=dict(size=11, color="#FDBB30"), x=0),
+            legend=dict(orientation="h", y=1.12, x=0, font=dict(size=10)),
+            xaxis=dict(gridcolor="#333", title="Pitch #"),
+            yaxis=dict(gridcolor="#333"),
+            hovermode="x unified",
+        )
+        return fig
+
+    @output
+    @render.ui
+    def trends_stuffplus_arsenal():
+        import plotly.graph_objects as go
+        data = _build_trends_data()
+        if data.empty or "stuff_plus" not in data.columns:
+            return ui.div("No data", style="color:#888;padding:20px;")
+        w = max(5, input.trends_window())
+        roll = data["stuff_plus"].rolling(w, min_periods=3).mean()
+        fig = _rolling_line_fig()
+        fig.add_trace(go.Scatter(
+            x=data["_pitch_idx"], y=roll,
+            mode="lines", name="Stuff+",
+            line=dict(color="#FDBB30", width=2.5),
+            hovertemplate="Pitch %{x}<br>Stuff+: %{y:.1f}<extra></extra>"
+        ))
+        fig.add_hline(y=100, line_dash="dash", line_color="#555", line_width=1)
+        fig.update_yaxes(title="Stuff+")
+        return ui.HTML(fig.to_html(full_html=False, include_plotlyjs=False,
+                                    config={"displayModeBar": False}))
+
+    @output
+    @render.ui
+    def trends_stuffplus_by_pitch():
+        import plotly.graph_objects as go
+        data = _build_trends_data()
+        if data.empty or "stuff_plus" not in data.columns or "PitchType" not in data.columns:
+            return ui.div("No data", style="color:#888;padding:20px;")
+        w = max(5, input.trends_window())
+        fig = _rolling_line_fig()
+        pitch_types = [p for p in data["PitchType"].dropna().unique() if p != "Unknown"]
+        pitch_types = sorted(pitch_types, key=lambda p: data[data["PitchType"]==p].shape[0], reverse=True)
+        for p in pitch_types:
+            sub = data[data["PitchType"] == p].copy()
+            if len(sub) < 3:
+                continue
+            sub = sub.sort_values("_pitch_idx")
+            roll = sub["stuff_plus"].rolling(w, min_periods=3).mean()
+            color = pitch_colors_dict.get(p, "#9C8975")
+            fig.add_trace(go.Scatter(
+                x=sub["_pitch_idx"], y=roll,
+                mode="lines", name=p,
+                line=dict(color=color, width=2),
+                hovertemplate=f"{p} — Pitch %{{x}}<br>Stuff+: %{{y:.1f}}<extra></extra>"
+            ))
+        fig.add_hline(y=100, line_dash="dash", line_color="#555", line_width=1)
+        fig.update_yaxes(title="Stuff+")
+        return ui.HTML(fig.to_html(full_html=False, include_plotlyjs=False,
+                                    config={"displayModeBar": False}))
+
+    @output
+    @render.ui
+    def trends_zone_strike():
+        import plotly.graph_objects as go
+        data = _build_trends_data()
+        if data.empty or "PitchCall" not in data.columns:
+            return ui.div("No data", style="color:#888;padding:20px;")
+        w = max(5, input.trends_window())
+        strike_calls = {"StrikeCalled","StrikeSwinging","FoulBall","FoulBallFieldable","FoulBallNotFieldable","InPlay"}
+        data["_is_strike"] = data["PitchCall"].isin(strike_calls).astype(float)
+        if "PlateLocSide" in data.columns and "PlateLocHeight" in data.columns:
+            data["_in_zone"] = (
+                data["PlateLocSide"].between(-0.83, 0.83) &
+                data["PlateLocHeight"].between(1.5, 3.5)
+            ).astype(float)
+        else:
+            data["_in_zone"] = float("nan")
+        roll_strike = data["_is_strike"].rolling(w, min_periods=3).mean() * 100
+        roll_zone   = data["_in_zone"].rolling(w, min_periods=3).mean() * 100
+        fig = _rolling_line_fig()
+        fig.add_trace(go.Scatter(
+            x=data["_pitch_idx"], y=roll_strike,
+            mode="lines", name="Strike%",
+            line=dict(color="#4ECDC4", width=2),
+            hovertemplate="Pitch %{x}<br>Strike%%: %{y:.1f}<extra></extra>"
+        ))
+        fig.add_trace(go.Scatter(
+            x=data["_pitch_idx"], y=roll_zone,
+            mode="lines", name="Zone%",
+            line=dict(color="#96CEB4", width=2, dash="dash"),
+            hovertemplate="Pitch %{x}<br>Zone%%: %{y:.1f}<extra></extra>"
+        ))
+        fig.update_yaxes(title="%", range=[0, 100])
+        return ui.HTML(fig.to_html(full_html=False, include_plotlyjs=False,
+                                    config={"displayModeBar": False}))
+
+    @output
+    @render.ui
+    def trends_whiff_woba():
+        import plotly.graph_objects as go
+        data = _build_trends_data()
+        if data.empty:
+            return ui.div("No data", style="color:#888;padding:20px;")
+        w = max(5, input.trends_window())
+        fig = _rolling_line_fig()
+        # Whiff% — swings that miss
+        if "PitchCall" in data.columns:
+            swing_calls = {"StrikeSwinging","FoulBall","FoulBallFieldable","FoulBallNotFieldable","InPlay"}
+            data["_swing"]  = data["PitchCall"].isin(swing_calls).astype(float)
+            data["_whiff"]  = (data["PitchCall"] == "StrikeSwinging").astype(float)
+            # Rolling whiff% = rolling whiffs / rolling swings (use ratio of rolling means)
+            roll_swings = data["_swing"].rolling(w, min_periods=3).sum()
+            roll_whiffs = data["_whiff"].rolling(w, min_periods=3).sum()
+            roll_whiff_pct = (roll_whiffs / roll_swings.replace(0, float("nan"))) * 100
+            fig.add_trace(go.Scatter(
+                x=data["_pitch_idx"], y=roll_whiff_pct,
+                mode="lines", name="Whiff%",
+                line=dict(color="#FF6B6B", width=2),
+                hovertemplate="Pitch %{x}<br>Whiff%%: %{y:.1f}<extra></extra>"
+            ))
+        # xwOBA — use xwoba column if available
+        xwoba_col = next((c for c in ["xwOBA","xwoba","xWOBA"] if c in data.columns), None)
+        if xwoba_col:
+            roll_xwoba = data[xwoba_col].rolling(w, min_periods=3).mean()
+            fig.add_trace(go.Scatter(
+                x=data["_pitch_idx"], y=roll_xwoba,
+                mode="lines", name="xwOBA",
+                line=dict(color="#F79E70", width=2, dash="dot"),
+                yaxis="y2",
+                hovertemplate="Pitch %{x}<br>xwOBA: %{y:.3f}<extra></extra>"
+            ))
+            fig.update_layout(
+                yaxis2=dict(
+                    title="xwOBA", overlaying="y", side="right",
+                    gridcolor="#333", range=[0, 0.8],
+                    tickfont=dict(color="#F79E70")
+                )
+            )
+        fig.update_yaxes(title="Whiff%", range=[0, 100])
+        return ui.HTML(fig.to_html(full_html=False, include_plotlyjs=False,
+                                    config={"displayModeBar": False}))
+
 
     # Butterfly usage chart outputs
     @output
