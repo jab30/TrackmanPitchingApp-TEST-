@@ -4411,6 +4411,38 @@ def server(input, output, session):
         data["_pitch_idx"] = range(1, len(data) + 1)
         return data
 
+    def _outing_starts(data):
+        """Return list of (pitch_idx, date_label) for the first pitch of each new outing/date."""
+        if "Date" not in data.columns or data.empty:
+            return []
+        starts = []
+        prev_date = None
+        for _, row in data.iterrows():
+            d = row["Date"]
+            if d != prev_date:
+                starts.append((row["_pitch_idx"], str(d)))
+                prev_date = d
+        return starts
+
+    def _add_outing_lines(fig, outing_starts, skip_first=True):
+        """Add vertical dashed lines at each outing start."""
+        import plotly.graph_objects as go
+        for i, (idx, label) in enumerate(outing_starts):
+            if skip_first and i == 0:
+                continue  # skip first — it's just the start of data
+            fig.add_vline(
+                x=idx,
+                line=dict(color="rgba(255,255,255,0.25)", width=1.2, dash="dash"),
+            )
+            fig.add_annotation(
+                x=idx, y=1.0, yref="paper",
+                text=label, showarrow=False,
+                font=dict(size=8, color="rgba(255,255,255,0.45)"),
+                textangle=-90, xanchor="left", yanchor="top",
+                xshift=3,
+            )
+        return fig
+
     def _rolling_line_fig(title=""):
         import plotly.graph_objects as go
         fig = go.Figure()
@@ -4446,6 +4478,7 @@ def server(input, output, session):
             hovertemplate="Pitch %{x}<br>Stuff+: %{y:.1f}<extra></extra>"
         ))
         fig.add_hline(y=100, line_dash="dash", line_color="#555", line_width=1)
+        _add_outing_lines(fig, _outing_starts(data))
         fig.update_yaxes(title="Stuff+")
         return ui.HTML(fig.to_html(full_html=False, include_plotlyjs=False,
                                     config={"displayModeBar": False}))
@@ -4475,6 +4508,7 @@ def server(input, output, session):
                 hovertemplate=f"{p} — Pitch %{{x}}<br>Stuff+: %{{y:.1f}}<extra></extra>"
             ))
         fig.add_hline(y=100, line_dash="dash", line_color="#555", line_width=1)
+        _add_outing_lines(fig, _outing_starts(data))
         fig.update_yaxes(title="Stuff+")
         return ui.HTML(fig.to_html(full_html=False, include_plotlyjs=False,
                                     config={"displayModeBar": False}))
@@ -4511,6 +4545,7 @@ def server(input, output, session):
             line=dict(color="#96CEB4", width=2, dash="dash"),
             hovertemplate="Pitch %{x}<br>Zone%%: %{y:.1f}<extra></extra>"
         ))
+        _add_outing_lines(fig, _outing_starts(data))
         fig.update_yaxes(title="%", range=[0, 100])
         return ui.HTML(fig.to_html(full_html=False, include_plotlyjs=False,
                                     config={"displayModeBar": False}))
@@ -4557,6 +4592,7 @@ def server(input, output, session):
                     tickfont=dict(color="#F79E70")
                 )
             )
+        _add_outing_lines(fig, _outing_starts(data))
         fig.update_yaxes(title="Whiff%", range=[0, 100])
         return ui.HTML(fig.to_html(full_html=False, include_plotlyjs=False,
                                     config={"displayModeBar": False}))
