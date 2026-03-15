@@ -4582,9 +4582,8 @@ def server(input, output, session):
 
     # ── Pitch Plinko ──────────────────────────────────────────────────────────
     def _build_plinko_html(data):
-        """Pitch Plinko: interactive Plotly scatter with hover tooltips and donut images."""
-        import math, plotly.graph_objects as go
-        from plotly.subplots import make_subplots
+        """Pitch Plinko: SVG donuts + JS tooltip on hover."""
+        import math
 
         if data.empty:
             return "<div style='color:#888;padding:20px;'>No data</div>"
@@ -4600,14 +4599,13 @@ def server(input, output, session):
         COLORS = pitch_colors_dict
         PITCH_ORDER = ["Fastball","Sinker","Cutter","Slider","Sweeper","Curveball","Changeup","Splitter"]
 
-        # Diamond layout: x=balls-strikes, y=-(balls+strikes) so 0-0 is at top
         count_pos = {
-            "0-0": (0, 0),
-            "0-1": (-1,-1), "1-0": (1,-1),
-            "0-2": (-2,-2), "1-1": (0,-2), "2-0": (2,-2),
-            "1-2": (-1,-3), "2-1": (1,-3), "3-0": (3,-3),
-            "2-2": (0,-4),  "3-1": (2,-4),
-            "3-2": (1,-5),
+            "0-0":(0,0),
+            "0-1":(-1,1),"1-0":(1,1),
+            "0-2":(-2,2),"1-1":(0,2),"2-0":(2,2),
+            "1-2":(-1,3),"2-1":(1,3),"3-0":(3,3),
+            "2-2":(0,4),"3-1":(2,4),
+            "3-2":(1,5),
         }
         transitions = {
             "0-0":["0-1","1-0"],"0-1":["0-2","1-1"],"1-0":["1-1","2-0"],
@@ -4616,141 +4614,170 @@ def server(input, output, session):
             "2-2":["3-2"],"3-1":["3-2"],
         }
 
-        def _side_traces(df_side, x_shift, gold):
-            traces = []
-            if df_side.empty:
-                return traces
-            count_freq = df_side["count_str"].value_counts()
+        GAP_X, GAP_Y = 90, 88
+        NODE_R = 30
+        INNER_R = int(NODE_R * 0.58)
+
+        def count_xy(cnt, cx, cy):
+            gx, gy = count_pos[cnt]
+            return cx + gx*GAP_X, cy + gy*GAP_Y
+
+        def donut_arcs(cx, cy, pitch_counts, pitch_total):
+            arcs = []
+            angle = -90.0
+            for pt in PITCH_ORDER + [p for p in pitch_counts.index if p not in PITCH_ORDER]:
+                n = pitch_counts.get(pt, 0)
+                if n == 0: continue
+                sweep = (n/pitch_total)*360
+                color = COLORS.get(pt, "#9C8975")
+                a1 = math.radians(angle)
+                a2 = math.radians(angle + sweep)
+                x1o = cx + NODE_R*math.cos(a1); y1o = cy + NODE_R*math.sin(a1)
+                x2o = cx + NODE_R*math.cos(a2); y2o = cy + NODE_R*math.sin(a2)
+                x1i = cx + INNER_R*math.cos(a2); y1i = cy + INNER_R*math.sin(a2)
+                x2i = cx + INNER_R*math.cos(a1); y2i = cy + INNER_R*math.sin(a1)
+                lg  = 1 if sweep > 180 else 0
+                d = (f"M {x1o:.1f} {y1o:.1f} A {NODE_R} {NODE_R} 0 {lg} 1 {x2o:.1f} {y2o:.1f} "
+                     f"L {x1i:.1f} {y1i:.1f} A {INNER_R} {INNER_R} 0 {lg} 0 {x2i:.1f} {y2i:.1f} Z")
+                arcs.append(f'<path d="{d}" fill="{color}"/>')
+                angle += sweep
+            return arcs
+
+        def build_side(df_side, cx, cy):
+            elems = []
+            count_freq = df_side["count_str"].value_counts() if not df_side.empty else pd.Series(dtype=int)
             total = len(df_side)
             max_freq = count_freq.max() if len(count_freq) > 0 else 1
 
-            # Edge traces
+            # Edges
             for src, dsts in transitions.items():
                 for dst in dsts:
-                    f1 = count_freq.get(src, 0)
-                    f2 = count_freq.get(dst, 0)
-                    w  = (f1 + f2) / 2
-                    thick = max(1.5, min(10, (w / max_freq) * 10))
-                    x1,y1 = count_pos[src]; x2,y2 = count_pos[dst]
-                    traces.append(go.Scatter(
-                        x=[x1+x_shift, x2+x_shift], y=[y1, y2],
-                        mode="lines",
-                        line=dict(color="#666", width=thick),
-                        showlegend=False, hoverinfo="skip",
-                    ))
+                    f1 = count_freq.get(src, 0); f2 = count_freq.get(dst, 0)
+                    w  = (f1+f2)/2
+                    thick = max(1.5, min(11, (w/max_freq)*11))
+                    x1,y1 = count_xy(src,cx,cy); x2,y2 = count_xy(dst,cx,cy)
+                    op = 0.3 + 0.5*(w/max_freq)
+                    elems.append(f'<line x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}" '
+                                 f'stroke="white" stroke-width="{thick:.1f}" stroke-opacity="{op:.2f}"/>')
 
-            # Node traces — one scatter point per count
-            node_x, node_y, node_text, node_hover, node_size, node_color = [],[],[],[],[],[]
+            # Nodes
             for cnt in count_pos:
-                gx, gy = count_pos[cnt]
-                freq = count_freq.get(cnt, 0)
-                pct  = freq / total * 100 if total > 0 else 0
-                x, y = gx + x_shift, gy
+                x, y = count_xy(cnt, cx, cy)
+                freq  = count_freq.get(cnt, 0)
+                pct   = freq/total*100 if total>0 else 0
+                pitch_counts = df_side[df_side["count_str"]==cnt]["PitchType"].value_counts() if not df_side.empty else pd.Series(dtype=int)
 
-                # Hover text: pitch breakdown
-                pitch_counts = df_side[df_side["count_str"]==cnt]["PitchType"].value_counts()
-                pt_lines = [f"<b>{cnt} Count</b>  {freq} pitches"]
+                # Tooltip data
+                pt_lines = [f"{cnt} Count \u2014 {freq} pitches"]
                 for pt in PITCH_ORDER + [p for p in pitch_counts.index if p not in PITCH_ORDER]:
-                    n = pitch_counts.get(pt, 0)
-                    if n == 0: continue
-                    pt_lines.append(f"{pt}:  {n} ({n/freq*100:.1f}%)" if freq>0 else pt)
-                hover_txt = "<br>".join(pt_lines)
+                    n = pitch_counts.get(pt,0)
+                    if n > 0:
+                        pt_lines.append(f"  {pt}: {n} ({n/freq*100:.1f}%)" if freq>0 else pt)
+                tooltip = "&#10;".join(pt_lines)
 
-                node_x.append(x); node_y.append(y)
-                node_text.append(f"{pct:.0f}%" if freq > 0 else "")
-                node_hover.append(hover_txt)
-                node_size.append(max(20, min(52, 18 + (freq/max_freq)*34)))
-                node_color.append(gold if freq > 0 else "#333")
+                if freq == 0:
+                    elems.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="{NODE_R}" '
+                                 f'fill="none" stroke="#444" stroke-width="1.5" stroke-dasharray="4,3"/>')
+                    elems.append(f'<text x="{x:.0f}" y="{y-NODE_R-5:.0f}" text-anchor="middle" '
+                                 f'fill="#555" font-size="9" font-family="sans-serif">{cnt}</text>')
+                    continue
 
-            traces.append(go.Scatter(
-                x=node_x, y=node_y,
-                mode="markers+text",
-                marker=dict(size=node_size, color=node_color, opacity=0.92,
-                            line=dict(color="#1e1e1e", width=2)),
-                text=node_text,
-                textfont=dict(color="#E8E8E8", size=9, family="sans-serif"),
-                textposition="middle center",
-                hovertemplate="%{customdata}<extra></extra>",
-                customdata=node_hover,
-                showlegend=False,
-            ))
+                # Donut arcs
+                elems.extend(donut_arcs(x, y, pitch_counts, freq))
+                # Inner circle
+                elems.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="{INNER_R}" fill="#1e1e1e"/>')
+                # Invisible hit area for hover
+                elems.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="{NODE_R}" '
+                              f'fill="transparent" class="plinko-node" '
+                              f'data-tip="{tooltip}" style="cursor:pointer;"/>')
+                # Count label
+                elems.append(f'<text x="{x:.0f}" y="{y-NODE_R-5:.0f}" text-anchor="middle" '
+                              f'fill="#FA4616" font-size="9" font-weight="bold" font-family="sans-serif">{cnt}</text>')
+                # Pct label
+                elems.append(f'<text x="{x:.0f}" y="{y+4:.0f}" text-anchor="middle" '
+                              f'fill="#E8E8E8" font-size="10" font-weight="bold" font-family="sans-serif">{pct:.0f}%</text>')
 
-            # Count labels (above each node)
-            lbl_x, lbl_y, lbl_text = [], [], []
-            for cnt in count_pos:
-                gx, gy = count_pos[cnt]
-                lbl_x.append(gx + x_shift)
-                lbl_y.append(gy + 0.38)
-                lbl_text.append(cnt)
-            traces.append(go.Scatter(
-                x=lbl_x, y=lbl_y,
-                mode="text",
-                text=lbl_text,
-                textfont=dict(color=gold, size=9, family="sans-serif"),
-                showlegend=False, hoverinfo="skip",
-            ))
-            return traces
+            return "\n".join(elems)
 
         lhh = data[data["BatterSide"].str.upper().str.startswith("L")]
         rhh = data[data["BatterSide"].str.upper().str.startswith("R")]
         n_total = len(data)
-        gold = "#FDBB30"
 
-        fig = go.Figure()
+        W, H = 1060, 640
+        LCX, RCX = 220, 750
+        CY = 55
 
-        # LHH at x_shift=-3.5, RHH at x_shift=3.5
-        for t in _side_traces(lhh, -3.5, gold):
-            fig.add_trace(t)
-        for t in _side_traces(rhh,  3.5, gold):
-            fig.add_trace(t)
+        def hdr(df_s, label, cx):
+            n = len(df_s); pct = n/n_total*100 if n_total>0 else 0
+            return (f'<text x="{cx}" y="28" text-anchor="middle" fill="#E8E8E8" '
+                    f'font-size="12" font-weight="bold" font-family="sans-serif">'
+                    f'vs {label} ({n:,} pitches, {pct:.1f}%)</text>')
 
-        # Side headers
-        def hdr(df_side, label, x_shift):
-            n = len(df_side)
-            pct = n/n_total*100 if n_total>0 else 0
-            return go.Scatter(
-                x=[x_shift], y=[0.7],
-                mode="text",
-                text=[f"<b>vs {label}</b> ({n:,} pitches, {pct:.1f}%)"],
-                textfont=dict(color="#E8E8E8", size=11),
-                showlegend=False, hoverinfo="skip",
-            )
-        fig.add_trace(hdr(lhh, "LHH", -3.5))
-        fig.add_trace(hdr(rhh, "RHH",  3.5))
-
-        # Divider line
-        fig.add_shape(type="line", x0=0, x1=0, y0=0.55, y1=-5.5,
-                      line=dict(color="#333", width=1))
+        lhh_svg = build_side(lhh, LCX, CY)
+        rhh_svg = build_side(rhh, RCX, CY)
 
         # Legend
         used = data["PitchType"].dropna().unique()
-        for i, pt in enumerate([p for p in PITCH_ORDER if p in used]):
-            fig.add_trace(go.Scatter(
-                x=[None], y=[None], mode="markers",
-                marker=dict(color=COLORS.get(pt,"#9C8975"), size=10, symbol="square"),
-                name=pt, showlegend=True,
-            ))
+        leg_items = []
+        lx = 30
+        for pt in PITCH_ORDER:
+            if pt not in used: continue
+            c = COLORS.get(pt,"#9C8975")
+            leg_items.append(f'<rect x="{lx}" y="{H-30}" width="11" height="11" fill="{c}" rx="2"/>')
+            leg_items.append(f'<text x="{lx+15}" y="{H-21}" fill="#E8E8E8" font-size="10" font-family="sans-serif">{pt}</text>')
+            lx += len(pt)*7 + 28
 
-        fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="#1e1e1e",
-            plot_bgcolor="#1e1e1e",
-            font=dict(color="#E8E8E8", size=11),
-            height=480,
-            margin=dict(l=10, r=10, t=40, b=50),
-            title=dict(
-                text="Pitch Plinko  <span style=\'font-size:10px;color:#888\'>Connection Thickness = Amount of Pitches</span>",
-                font=dict(size=13, color=gold), x=0.5, xanchor="center"
-            ),
-            xaxis=dict(visible=False, range=[-7.5, 7.5]),
-            yaxis=dict(visible=False, range=[-6.2, 1.1]),
-            hovermode="closest",
-            legend=dict(orientation="h", y=-0.04, x=0.5, xanchor="center",
-                        font=dict(size=10)),
-        )
+        divider = f'<line x1="490" y1="40" x2="490" y2="{H-45}" stroke="#333" stroke-width="1"/>'
+        title   = (f'<text x="{W//2}" y="16" text-anchor="middle" fill="#E8E8E8" '
+                   f'font-size="13" font-weight="bold" font-family="sans-serif">Pitch Plinko</text>'
+                   f'<text x="{W//2}" y="30" text-anchor="middle" fill="#888" '
+                   f'font-size="9" font-family="sans-serif">Connection Thickness = Amount of Pitches</text>')
 
-        return fig.to_html(full_html=False, include_plotlyjs=False,
-                           config={"displayModeBar": False})
+        svg = (f'<svg id="plinko-svg" width="100%" viewBox="0 0 {W} {H}" '
+               f'xmlns="http://www.w3.org/2000/svg" style="background:#1e1e1e;border-radius:8px;">'
+               + title + divider
+               + hdr(lhh,"LHH",LCX) + hdr(rhh,"RHH",RCX)
+               + lhh_svg + rhh_svg
+               + "\n".join(leg_items)
+               + "</svg>")
+
+        js = """
+<div id="plinko-tooltip" style="
+    display:none;position:fixed;background:rgba(20,20,20,0.95);
+    color:#E8E8E8;border:1px solid #555;border-radius:8px;
+    padding:10px 14px;font-size:12px;font-family:sans-serif;
+    pointer-events:none;z-index:9999;line-height:1.8;
+    box-shadow:0 4px 20px rgba(0,0,0,0.7);white-space:pre;
+    min-width:180px;
+"></div>
+<script>
+(function(){
+    function initPlinko(){
+        var nodes = document.querySelectorAll('.plinko-node');
+        var tip   = document.getElementById('plinko-tooltip');
+        if(!tip || nodes.length===0){ setTimeout(initPlinko,400); return; }
+        nodes.forEach(function(n){
+            n.addEventListener('mouseenter', function(e){
+                tip.innerText = n.getAttribute('data-tip').replace(/&#10;/g,'\\n');
+                tip.style.display = 'block';
+            });
+            n.addEventListener('mousemove', function(e){
+                var tx = e.clientX+16, ty = e.clientY-10;
+                if(tx + 220 > window.innerWidth) tx = e.clientX - 230;
+                tip.style.left = tx+'px';
+                tip.style.top  = ty+'px';
+            });
+            n.addEventListener('mouseleave', function(){
+                tip.style.display = 'none';
+            });
+        });
+    }
+    setTimeout(initPlinko, 300);
+})();
+</script>"""
+
+        return svg + js
+
 
 
     @output
