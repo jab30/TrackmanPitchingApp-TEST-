@@ -2241,6 +2241,11 @@ app_ui = ui.page_sidebar(
                 ui.output_ui("trends_whiff_woba"),
                 class_="section-card"
             ),
+            ui.div(
+                ui.div("Rolling Tilt (by Pitch Type)", class_="section-card-title"),
+                ui.output_ui("trends_tilt"),
+                class_="section-card"
+            ),
         ),
 
         id="main_tabs"
@@ -2413,6 +2418,16 @@ def server(input, output, session):
                 for _sfx in ["","_min","_max","_sd"]:
                     metrics[f"{_pcol}{_sfx}"] = np.nan
 
+        # Grade: 20-80 scale, 50=avg (100 Stuff+), SD=10
+        if "Stuff+" in metrics.index or "Stuff+" in metrics.columns:
+            try:
+                _sp_col = metrics["Stuff+"] if "Stuff+" in metrics.columns else pd.Series(dtype=float)
+                metrics["Grade"] = _sp_col.apply(
+                    lambda v: int(round(max(20, min(80, (v - 100) + 50)))) if pd.notna(v) else np.nan
+                )
+            except Exception:
+                metrics["Grade"] = np.nan
+
         usage_percentage = data["PitchType"].value_counts(normalize=True) * 100
         metrics["Usage%"] = usage_percentage.reindex(metrics.index, fill_value=0.0).round(1)
         pitch_counts = data["PitchType"].value_counts()
@@ -2436,12 +2451,14 @@ def server(input, output, session):
         for _pcol in ["Stuff+", "Location+", "Pitching+"]:
             if _pcol in metrics.columns:
                 column_order.append(_pcol)
+                if _pcol == "Stuff+" and "Grade" in metrics.columns:
+                    column_order.append("Grade")
 
         if "ArmAngle" in metrics.columns:
             column_order.insert(-3, "ArmAngle")
 
         # Keep plus cols as NaN when missing; fill 0 only for core numeric cols
-        _plus_display_cols = [c for c in ["Stuff+","Location+","Pitching+"] if c in column_order]
+        _plus_display_cols = [c for c in ["Stuff+","Location+","Pitching+","Grade"] if c in column_order]
         _core_cols = [c for c in column_order if c not in _plus_display_cols]
         metrics[_core_cols] = metrics[_core_cols].fillna(0)
 
@@ -2453,6 +2470,7 @@ def server(input, output, session):
         for _pcol in ['Stuff+', 'Location+', 'Pitching+']:
             if _pcol in metrics.columns:
                 base_cols.append(_pcol)
+        # Grade derived from Stuff+ — compute for TOTAL after weighted avg
         if "Tilt" in metrics.columns:
             base_cols.insert(5, 'Tilt')  # Insert after SpinRate
 
@@ -2468,6 +2486,10 @@ def server(input, output, session):
             weighted_arm_angles = (data.groupby('PitchType')['arm_angle'].mean() * metrics['Count']).sum()
             total_count = metrics['Count'].sum()
             total_row['ArmAngle'] = round(90 - (weighted_arm_angles / total_count), 1) if total_count > 0 else 0.0
+        # Grade for TOTAL = derived from weighted Stuff+ if available
+        if "Stuff+" in total_row and pd.notna(total_row.get("Stuff+")):
+            _sp_total = total_row["Stuff+"]
+            total_row["Grade"] = int(round(max(20, min(80, (_sp_total - 100) + 50))))
         total_df = pd.DataFrame([total_row])
         metrics = pd.concat([metrics, total_df], ignore_index=True)
 
@@ -2498,6 +2520,34 @@ def server(input, output, session):
                         html += f'<td style="border: 1px solid #2c2c2c; padding: 8px; text-align: center; font-weight: bold; {style}">{formatted_value}</td>'
                     else:
                         html += f'<td style="border: 1px solid #ddd; padding: 8px; text-align: center; {style}">{formatted_value}</td>'
+                elif col == 'Grade':
+                    is_total = row['PitchType'] == 'TOTAL'
+                    is_nan = pd.isna(value)
+                    if is_nan:
+                        disp = '—'
+                        bg_style = 'background-color: #1a2236; color: #E8E8E8;'
+                    else:
+                        grade_val = int(value)
+                        disp = str(grade_val)
+                        # Color: 20=blue, 50=neutral, 80=red — same dark gradient
+                        norm = (grade_val - 20) / 60.0
+                        norm = max(0.0, min(1.0, norm))
+                        if norm < 0.5:
+                            f2 = norm * 2
+                            _r = int(0   + (44 - 0)   * f2)
+                            _g = int(123 + (44 - 123) * f2)
+                            _b = int(255 + (44 - 255) * f2)
+                            _txt = "white" if norm < 0.2 else "#E8E8E8"
+                        else:
+                            f2 = (norm - 0.5) * 2
+                            _r = int(44  + (220 - 44)  * f2)
+                            _g = int(44  + (53  - 44)  * f2)
+                            _b = int(44  + (69  - 44)  * f2)
+                            _txt = "#E8E8E8" if norm < 0.7 else "white"
+                        bg_style = f"background-color: #{_r:02x}{_g:02x}{_b:02x}; color: {_txt};"
+                    border = '#2c2c2c' if is_total else '#ddd'
+                    fw = 'bold'
+                    html += f'<td style="border: 1px solid {border}; padding: 8px; text-align: center; font-weight: {fw}; {bg_style}">{disp}</td>'
                 elif col in ['Stuff+', 'Location+', 'Pitching+']:
                     is_total = row['PitchType'] == 'TOTAL'
                     is_nan = pd.isna(value)
@@ -4586,6 +4636,67 @@ def server(input, output, session):
             )
         _add_outing_lines(fig, _outing_starts(data))
         fig.update_yaxes(title="Whiff%", range=[0, 100])
+        return ui.HTML(fig.to_html(full_html=False, include_plotlyjs=False,
+                                    config={"displayModeBar": False}))
+
+    @output
+    @render.ui
+    def trends_tilt():
+        import plotly.graph_objects as go
+        data = _build_trends_data()
+        if data.empty or "Tilt" not in data.columns or data["Tilt"].isna().all():
+            return ui.div("No Tilt data", style="color:#888;padding:20px;")
+        w = max(5, input.trends_window())
+
+        def deg_to_clock(deg):
+            """Convert degrees back to clock string for display."""
+            if pd.isna(deg): return "—"
+            total_min = (deg / 360) * 720
+            h = int(total_min // 60) % 12
+            m = int(total_min % 60)
+            if h == 0: h = 12
+            return f"{h}:{m:02d}"
+
+        pitch_types = [p for p in data["PitchType"].dropna().unique() if p != "Unknown"]
+        pitch_types = sorted(pitch_types, key=lambda p: data[data["PitchType"]==p].shape[0], reverse=True)
+
+        fig = _rolling_line_fig()
+        for p in pitch_types:
+            sub = data[data["PitchType"] == p].copy()
+            if sub["Tilt"].notna().sum() < 3:
+                continue
+            sub = sub.sort_values("_pitch_idx")
+            roll = sub["Tilt"].rolling(w, min_periods=3).mean()
+            color = pitch_colors_dict.get(p, "#9C8975")
+            # Custom hover showing clock format
+            clock_labels = roll.apply(deg_to_clock)
+            fig.add_trace(go.Scatter(
+                x=sub["_pitch_idx"], y=roll,
+                mode="lines", name=p,
+                line=dict(color=color, width=2),
+                customdata=clock_labels,
+                hovertemplate=f"{p} — Pitch %{{x}}<br>Tilt: %{{customdata}}<extra></extra>"
+            ))
+
+        # Avg tilt reference line per pitch type as annotation
+        avg_tilts = data.groupby("PitchType")["Tilt"].mean()
+        for p, avg in avg_tilts.items():
+            if pd.isna(avg): continue
+            color = pitch_colors_dict.get(p, "#9C8975")
+            fig.add_hline(y=avg, line_dash="dot", line_color=color,
+                          line_width=0.8, opacity=0.4)
+
+        _add_outing_lines(fig, _outing_starts(data))
+
+        # Y-axis: show clock format ticks
+        tick_degrees = [i*(360/12) for i in range(13)]
+        tick_labels  = [deg_to_clock(d) for d in tick_degrees]
+        fig.update_yaxes(
+            title="Tilt",
+            tickvals=tick_degrees,
+            ticktext=tick_labels,
+            range=[0, 360],
+        )
         return ui.HTML(fig.to_html(full_html=False, include_plotlyjs=False,
                                     config={"displayModeBar": False}))
 
