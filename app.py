@@ -1332,6 +1332,19 @@ def _compute_plus_by_pitch(data: "pd.DataFrame") -> "pd.DataFrame":
     return d
 
 
+# ── Pre-compute plus metrics for entire df at startup (cache) ─────────────────
+print("Pre-computing plus metrics for full dataset...")
+try:
+    _df_plus_cache = _compute_plus_by_pitch(df)
+    print(f"Plus cache built: {len(_df_plus_cache)} rows")
+except Exception as _e:
+    print(f"Plus cache error: {_e}")
+    _df_plus_cache = df.copy()
+    _df_plus_cache["stuff_plus"] = np.nan
+    _df_plus_cache["location_plus"] = np.nan
+    _df_plus_cache["pitching_plus"] = np.nan
+
+
 def _plus_color(value) -> str:
     """Dark-theme gradient matching the rest of the pitch metrics table.
     blue(0,123,255) → #5e5757(94,87,87) → red(220,53,69), centred at 100 (lo=70, hi=130).
@@ -2399,7 +2412,7 @@ def server(input, output, session):
 
         # ── Stuff+ / Location+ / Pitching+ per pitch type ──────────────────
         try:
-            _plus_data = _compute_plus_by_pitch(data)
+            _plus_data = _df_plus_cache.loc[_df_plus_cache.index.intersection(data.index)]
             for _pcol, _src in [("Stuff+","stuff_plus"),("Location+","location_plus"),("Pitching+","pitching_plus")]:
                 if _src in _plus_data.columns:
                     _agg = _plus_data.groupby("PitchType")[_src].agg(
@@ -3820,7 +3833,7 @@ def server(input, output, session):
 
         # Compute plus metrics for entire filtered dataset once
         try:
-            _plus_lb = _compute_plus_by_pitch(data)
+            _plus_lb = _df_plus_cache.loc[_df_plus_cache.index.intersection(data.index)]
         except Exception as _pe:
             print(f"Leaderboard plus error: {_pe}")
             _plus_lb = data.copy()
@@ -5092,7 +5105,7 @@ def server(input, output, session):
         # ── Compute Stuff+ if available ──────────────────────────────────────
         if _stuff_models:
             try:
-                _plus_data = _compute_plus_by_pitch(data)
+                _plus_data = _df_plus_cache.loc[_df_plus_cache.index.intersection(data.index)]
             except Exception:
                 _plus_data = pd.DataFrame()
         else:
