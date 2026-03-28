@@ -1153,7 +1153,7 @@ try:
     _HF_TOKEN = os.environ.get("HF_TOKEN", "")
     for _mf in ["FB_model.pkl", "BB_model.pkl", "OS_model.pkl", "xslg_model.pkl"]:
         _local = os.path.join(os.path.dirname(__file__), _mf)
-        if not os.path.exists(_local) and _HF_TOKEN:
+        if _HF_TOKEN and (not os.path.exists(_local) or os.path.getsize(_local) < 100000):
             import shutil as _shutil
             print(f"Downloading {_mf}...")
             _shutil.copy(_hf_dl(repo_id=_HF_REPO, filename=_mf, repo_type="model", token=_HF_TOKEN), _local)
