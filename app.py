@@ -1157,6 +1157,20 @@ try:
             import shutil as _shutil
             print(f"Downloading {_mf}...")
             _shutil.copy(_hf_dl(repo_id=_HF_REPO, filename=_mf, repo_type="model", token=_HF_TOKEN), _local)
+    _loc_dir = os.path.join(os.path.dirname(__file__), "loc_model")
+    os.makedirs(_loc_dir, exist_ok=True)
+    _loc_files = ["location_model_Fastball_Left.joblib","location_model_Fastball_Right.joblib",
+                  "location_model_Sinker_Left.joblib","location_model_Sinker_Right.joblib",
+                  "location_model_Cutter_Left.joblib","location_model_Cutter_Right.joblib",
+                  "location_model_Slider_Left.joblib","location_model_Slider_Right.joblib",
+                  "location_model_Curveball_Left.joblib","location_model_Curveball_Right.joblib",
+                  "location_model_Changeup_Left.joblib","location_model_Changeup_Right.joblib"]
+    for _lf in _loc_files:
+        _llocal = os.path.join(_loc_dir, _lf)
+        if _HF_TOKEN and (not os.path.exists(_llocal) or os.path.getsize(_llocal) < 1000):
+            import shutil as _shutil
+            print(f"Downloading {_lf}...")
+            _shutil.copy(_hf_dl(repo_id=_HF_REPO, filename=f"loc_model/{_lf}", repo_type="model", token=_HF_TOKEN), _llocal)
 except Exception as _e:
     print(f"HF model download error: {_e}")
 
