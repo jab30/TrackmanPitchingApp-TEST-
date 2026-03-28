@@ -1147,11 +1147,23 @@ def simple_kde(data, x_range, bandwidth=None):
     return density
 
 # ── xSLG model (loaded once at startup) ──────────────────────────────────────
+try:
+    from huggingface_hub import hf_hub_download as _hf_dl
+    _HF_REPO = "jab13/ksu-models"
+    _HF_TOKEN = os.environ.get("HF_TOKEN", "")
+    for _mf in ["FB_model.pkl", "BB_model.pkl", "OS_model.pkl", "xslg_model.pkl"]:
+        _local = os.path.join(os.path.dirname(__file__), _mf)
+        if not os.path.exists(_local) and _HF_TOKEN:
+            import shutil as _shutil
+            print(f"Downloading {_mf}...")
+            _shutil.copy(_hf_dl(repo_id=_HF_REPO, filename=_mf, repo_type="model", token=_HF_TOKEN), _local)
+except Exception as _e:
+    print(f"HF model download error: {_e}")
+
 _xslg_model = None
 try:
     import pickle as _pickle
     _xslg_paths = [
-        "/Volumes/Projects/xslg_model.pkl",
         "xslg_model.pkl",
         os.path.join(os.path.dirname(__file__), "xslg_model.pkl"),
     ]
@@ -1193,11 +1205,11 @@ _stuff_models = {}   # {model_name: model}  keys: 'fb','bb','os'
 _loc_models   = {}   # {(pitch_group, side): model}
 
 _STUFF_MODEL_PATHS = {
-    "fb": ["/Users/jab/R_Projects/stuff/FB_model.pkl",  "/Volumes/Projects/Models/FB_model.pkl",  "FB_model.pkl"],
-    "bb": ["/Users/jab/R_Projects/stuff/BB_model.pkl",  "/Volumes/Projects/Models/BB_model.pkl",  "BB_model.pkl"],
-    "os": ["/Users/jab/R_Projects/stuff/OS_model.pkl",  "/Volumes/Projects/Models/OS_model.pkl",  "OS_model.pkl"],
+    "fb": ["FB_model.pkl", os.path.join(os.path.dirname(__file__), "FB_model.pkl")],
+    "bb": ["BB_model.pkl", os.path.join(os.path.dirname(__file__), "BB_model.pkl")],
+    "os": ["OS_model.pkl", os.path.join(os.path.dirname(__file__), "OS_model.pkl")],
 }
-_LOC_MODEL_DIR_PATHS = ["/Users/jab/realstuff/loc_model", "/Volumes/Projects/Models/loc_model", "loc_model"]
+_LOC_MODEL_DIR_PATHS = ["loc_model", os.path.join(os.path.dirname(__file__), "loc_model")]
 _PITCH_TYPE_MAPPING  = {
     "Fastball":  ["Fastball"],
     "Sinker":    ["Sinker"],
