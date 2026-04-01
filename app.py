@@ -906,21 +906,21 @@ def get_performance_color(value, pitch_type, metric):
         normalized = (value - min_val) / (max_val - min_val) if max_val > min_val else 0.5
         normalized = max(0, min(1, normalized))
 
-    # Create gradient color — #648FFF → #2c2c2c → #FFB000
+    # Create gradient color — blue #007bff → #2c2c2c → red #dc3545
     val = max(0.0, min(1.0, normalized))
 
     if val < 0.5:
         factor = val * 2
-        r = int(100 + (44 - 100) * factor)
-        g = int(143 + (44 - 143) * factor)
+        r = int(0   + (44 - 0)   * factor)
+        g = int(123 + (44 - 123) * factor)
         b = int(255 + (44 - 255) * factor)
         text_color = "white" if val < 0.2 else "#E8E8E8"
         font_weight = "bold" if val < 0.3 else "normal"
     else:
         factor = (val - 0.5) * 2
-        r = int(44  + (255 - 44)  * factor)
-        g = int(44  + (176 - 44)  * factor)
-        b = int(44  + (0   - 44)  * factor)
+        r = int(44  + (220 - 44)  * factor)
+        g = int(44  + (53  - 44)  * factor)
+        b = int(44  + (69  - 44)  * factor)
         text_color = "#E8E8E8" if val < 0.7 else "white"
         font_weight = "normal" if val < 0.7 else "bold"
 
@@ -979,19 +979,19 @@ def get_percentile_color(value, percentile, stat_name):
 
     normalized = max(0, min(1, normalized))
 
-    # Create gradient color — #648FFF → #2c2c2c → #FFB000
+    # Create gradient color — blue #007bff → #2c2c2c → red #dc3545
     if normalized < 0.5:
         factor = normalized * 2
-        r = int(100 + (44 - 100) * factor)
-        g = int(143 + (44 - 143) * factor)
+        r = int(0   + (44 - 0)   * factor)
+        g = int(123 + (44 - 123) * factor)
         b = int(255 + (44 - 255) * factor)
         text_color = "white" if normalized < 0.2 else "#E8E8E8"
         font_weight = "bold" if normalized < 0.3 else "normal"
     else:
         factor = (normalized - 0.5) * 2
-        r = int(44  + (255 - 44)  * factor)
-        g = int(44  + (176 - 44)  * factor)
-        b = int(44  + (0   - 44)  * factor)
+        r = int(44  + (220 - 44)  * factor)
+        g = int(44  + (53  - 44)  * factor)
+        b = int(44  + (69  - 44)  * factor)
         text_color = "#E8E8E8" if normalized < 0.7 else "white"
         font_weight = "normal" if normalized < 0.7 else "bold"
 
@@ -1039,9 +1039,9 @@ def get_summary_stat_color(value, stat_name):
     # Handle 0 values specially based on whether lower is better
     if value == 0 or value == 0.0:
         if lower_is_better:
-            return "background-color: rgb(255, 176, 0); color: white; font-weight: bold;"
+            return "background-color: rgb(188, 51, 64); color: white; font-weight: bold;"
         else:
-            return "background-color: rgb(100, 143, 255); color: white; font-weight: bold;"
+            return "background-color: rgb(58, 112, 184); color: white; font-weight: bold;"
 
     # Normalize the value
     normalized = (value - min_val) / (max_val - min_val) if max_val > min_val else 0.5
@@ -1051,26 +1051,26 @@ def get_summary_stat_color(value, stat_name):
     if lower_is_better:
         normalized = 1 - normalized
 
-    # Create gradient color — #648FFF(bad) → #2c2c2c(avg) → #FFB000(good)
+    # Create gradient color — same scale as savant bars: blue(bad) → #5e5757(avg) → red(good)
     if normalized < 0.33:
         t = normalized / 0.33
-        r = int(100 + (44  - 100) * t)
-        g = int(143 + (44  - 143) * t)
-        b = int(255 + (44  - 255) * t)
+        r = int(58  + (94  - 58)  * t)
+        g = int(112 + (87  - 112) * t)
+        b = int(184 + (87  - 184) * t)
         text_color = "white"
         font_weight = "bold" if normalized < 0.15 else "normal"
     elif normalized < 0.67:
         t = (normalized - 0.33) / 0.34
-        r = int(44  + (44  - 44)  * t)
-        g = int(44  + (44  - 44)  * t)
-        b = int(44  + (44  - 44)  * t)
+        r = int(94  + (188 - 94)  * t)
+        g = int(87  + (87  - 87)  * t)
+        b = int(87  + (87  - 87)  * t)
         text_color = "#E8E8E8"
         font_weight = "normal"
     else:
         t = (normalized - 0.67) / 0.33
-        r = int(44  + (255 - 44)  * t)
-        g = int(44  + (176 - 44)  * t)
-        b = int(44  + (0   - 44)  * t)
+        r = int(188 + (220 - 188) * t)
+        g = int(87  + (53  - 87)  * t)
+        b = int(87  + (64  - 87)  * t)
         text_color = "white"
         font_weight = "bold" if normalized > 0.85 else "normal"
 
@@ -1373,7 +1373,7 @@ def _compute_plus_by_pitch(data: "pd.DataFrame") -> "pd.DataFrame":
 
 def _plus_color(value) -> str:
     """Dark-theme gradient matching the rest of the pitch metrics table.
-    #648FFF(100,143,255) → #2c2c2c(44,44,44) → #FFB000(255,176,0), centred at 100 (lo=70, hi=130).
+    blue(0,123,255) → #5e5757(94,87,87) → red(220,53,69), centred at 100 (lo=70, hi=130).
     """
     try:
         v = float(value)
@@ -1384,16 +1384,16 @@ def _plus_color(value) -> str:
     normalized = max(0.0, min(1.0, normalized))
     if normalized < 0.5:
         factor = normalized * 2
-        r = int(100 + (44 - 100) * factor)
-        g = int(143 + (44 - 143) * factor)
+        r = int(0   + (44 - 0)   * factor)
+        g = int(123 + (44 - 123) * factor)
         b = int(255 + (44 - 255) * factor)
         text = "white" if normalized < 0.2 else "#E8E8E8"
         fw   = "bold"  if normalized < 0.3 else "normal"
     else:
         factor = (normalized - 0.5) * 2
-        r = int(44  + (255 - 44)  * factor)
-        g = int(44  + (176 - 44)  * factor)
-        b = int(44  + (0   - 44)  * factor)
+        r = int(44  + (220 - 44)  * factor)
+        g = int(44  + (53  - 44)  * factor)
+        b = int(44  + (69  - 44)  * factor)
         text = "#E8E8E8" if normalized < 0.7 else "white"
         fw   = "normal" if normalized < 0.7 else "bold"
     hex_bg = f"#{r:02x}{g:02x}{b:02x}"
@@ -1402,22 +1402,22 @@ def _plus_color(value) -> str:
 
 # ── Savant-style horizontal bar chart ─────────────────────────────────────────
 def _bar_color(pct: int, lower_is_better: bool) -> str:
-    """#648FFF=bad → #2c2c2c=avg → #FFB000=good. pct is already the display percentile (flipped if needed)."""
+    """Blue=bad → #5e5757=avg → red=good. pct is already the display percentile (flipped if needed)."""
     effective = max(0, min(100, pct))
     if effective < 33:
         t = effective / 33.0
-        r = int(100 + (44  - 100) * t)
-        g = int(143 + (44  - 143) * t)
-        b = int(255 + (44  - 255) * t)
+        r = int(58  + (94  - 58)  * t)
+        g = int(112 + (87  - 112) * t)
+        b = int(184 + (87  - 184) * t)
     elif effective < 67:
-        r = 44
-        g = 44
-        b = 44
+        r = 94
+        g = 87
+        b = 87
     else:
         t = (effective - 67) / 33.0
-        r = int(44  + (255 - 44)  * t)
-        g = int(44  + (176 - 44)  * t)
-        b = int(44  + (0   - 44)  * t)
+        r = int(94  + (220 - 94)  * t)
+        g = int(87  + (0   - 87)  * t)
+        b = int(87  + (0   - 87)  * t)
     return f"rgb({r},{g},{b})"
 
 def make_savant_bars_html(row, title: str) -> str:
@@ -3765,21 +3765,21 @@ def server(input, output, session):
 
             normalized = max(0, min(1, normalized))
 
-            # Create gradient color (#FFB000 = good, #2c2c2c = neutral, #648FFF = bad) - INVERTED
+            # Create gradient color (RED = good, #5e5757 = neutral, BLUE = bad) - INVERTED
             if normalized < 0.5:
                 # Blue to midpoint gradient (bad to neutral)
                 factor = normalized * 2
-                r = int(100 + (44 - 100) * factor)
-                g = int(143 + (44 - 143) * factor)
-                b = int(255 + (44 - 255) * factor)
+                r = int(0 + (94 - 0) * factor)
+                g = int(123 + (87 - 123) * factor)
+                b = int(255 + (87 - 255) * factor)
                 text_color = "white" if normalized < 0.2 else "#E8E8E8"
                 font_weight = "bold" if normalized < 0.3 else "normal"
             else:
-                # Midpoint to gold gradient (neutral to good)
+                # Midpoint to red gradient (neutral to good)
                 factor = (normalized - 0.5) * 2
-                r = int(44 + (255 - 44) * factor)
-                g = int(44 + (176 - 44) * factor)
-                b = int(44 + (0   - 44) * factor)
+                r = int(94 + (220 - 94) * factor)
+                g = int(87 + (53 - 87) * factor)
+                b = int(87 + (69 - 87) * factor)
                 text_color = "#E8E8E8" if normalized < 0.7 else "white"
                 font_weight = "normal" if normalized < 0.7 else "bold"
 
