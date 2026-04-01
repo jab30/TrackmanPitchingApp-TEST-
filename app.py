@@ -1219,11 +1219,12 @@ _stuff_models = {}   # {model_name: model}  keys: 'fb','bb','os'
 _loc_models   = {}   # {(pitch_group, side): model}
 
 _STUFF_MODEL_PATHS = {
-    "fb": ["FB_model.pkl", os.path.join(os.path.dirname(__file__), "FB_model.pkl")],
-    "bb": ["BB_model.pkl", os.path.join(os.path.dirname(__file__), "BB_model.pkl")],
-    "os": ["OS_model.pkl", os.path.join(os.path.dirname(__file__), "OS_model.pkl")],
+    "fb": ["/Users/jab/realstuff/pitching_plus_models/FB_pitching_plus_bundle.pkl", "FB_model.pkl", os.path.join(os.path.dirname(__file__), "FB_model.pkl")],
+    "bb": ["/Users/jab/realstuff/pitching_plus_models/BB_pitching_plus_bundle.pkl", "BB_model.pkl", os.path.join(os.path.dirname(__file__), "BB_model.pkl")],
+    "os": ["/Users/jab/realstuff/pitching_plus_models/OS_pitching_plus_bundle.pkl", "OS_model.pkl", os.path.join(os.path.dirname(__file__), "OS_model.pkl")],
 }
-_LOC_MODEL_DIR_PATHS = ["loc_model", os.path.join(os.path.dirname(__file__), "loc_model")]
+_LOC_MODEL_DIR_PATHS = ["/Users/jab/realstuff/loc_model", "loc_model", os.path.join(os.path.dirname(__file__), "loc_model")]
+_MLB_REF_STATS_PATHS = ["/Users/jab/realstuff/pitching_plus_models/mlb_ref_stats.json"]
 _PITCH_TYPE_MAPPING  = {
     "Fastball":  ["Fastball"],
     "Sinker":    ["Sinker"],
@@ -1255,6 +1256,18 @@ for _loc_dir in _LOC_MODEL_DIR_PATHS:
                         _loc_models[(_pname, _side)] = _joblib.load(_mp)
                     except Exception as _e:
                         print(f"Loc model {_pname}/{_side} load error: {_e}")
+        break
+
+_mlb_ref_stats = {}
+for _rp in _MLB_REF_STATS_PATHS:
+    if os.path.exists(_rp):
+        try:
+            import json as _json
+            with open(_rp) as _rf:
+                _mlb_ref_stats = _json.load(_rf)
+            print(f"mlb_ref_stats loaded from {_rp}")
+        except Exception as _e:
+            print(f"mlb_ref_stats load error: {_e}")
         break
 
 # Pre-compute reference distributions from full df for normalization
