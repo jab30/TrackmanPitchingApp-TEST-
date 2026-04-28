@@ -2067,7 +2067,7 @@ app_ui = ui.page_sidebar(
         # Logo inside sidebar at top
         ui.div(
             ui.img(
-                src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Kennesaw_State_Owls_logo.svg/1200px-Kennesaw_State_Owls_logo.svg.png",
+                src="https://pearatings.com/api/baseball-logo/Kennesaw%20St.",
                 style="height: 54px; display: block; margin: 0 auto 16px;"),
             style="text-align:center;"
         ),
