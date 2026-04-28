@@ -2114,7 +2114,7 @@ app_ui = ui.page_sidebar(
     ui.div(
         ui.div(
             ui.img(
-                src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Kennesaw_State_Owls_logo.svg/1200px-Kennesaw_State_Owls_logo.svg.png",
+                src="https://pearatings.com/api/baseball-logo/Kennesaw%20St.",
                 style="height: 52px; flex-shrink:0;"),
             ui.div(
                 ui.div("The Nest", class_="nest-title"),
