@@ -1146,38 +1146,36 @@ def simple_kde(data, x_range, bandwidth=None):
     density = density / (len(data) * bandwidth * np.sqrt(2 * np.pi))
     return density
 
-# ── xSLG model (loaded once at startup) ──────────────────────────────────────
+# ── HF Hub model cache (stored in ~/.cache/huggingface, survives container restarts) ──
+# Keys are HF filenames; values are local cache paths returned by hf_hub_download.
+# hf_hub_download checks its cache before hitting the network, so same-container
+# restarts skip the download entirely. Never copy to the project dir (it's re-cloned
+# from git on every restart, making any copies there useless).
+_HF_CACHED = {}
+_loc_files = ["location_model_Fastball_Left.joblib","location_model_Fastball_Right.joblib",
+              "location_model_Sinker_Left.joblib","location_model_Sinker_Right.joblib",
+              "location_model_Cutter_Left.joblib","location_model_Cutter_Right.joblib",
+              "location_model_Slider_Left.joblib","location_model_Slider_Right.joblib",
+              "location_model_Curveball_Left.joblib","location_model_Curveball_Right.joblib",
+              "location_model_Changeup_Left.joblib","location_model_Changeup_Right.joblib"]
 try:
     from huggingface_hub import hf_hub_download as _hf_dl
     _HF_REPO = "jab13/ksu-models"
     _HF_TOKEN = os.environ.get("HF_TOKEN", "")
-    for _mf in ["FB_model.pkl", "BB_model.pkl", "OS_model.pkl", "xslg_model.pkl"]:
-        _local = os.path.join(os.path.dirname(__file__), _mf)
-        if _HF_TOKEN and (not os.path.exists(_local) or os.path.getsize(_local) < 100000):
-            import shutil as _shutil
-            print(f"Downloading {_mf}...")
-            _shutil.copy(_hf_dl(repo_id=_HF_REPO, filename=_mf, repo_type="model", token=_HF_TOKEN), _local)
-    _loc_dir = os.path.join(os.path.dirname(__file__), "loc_model")
-    os.makedirs(_loc_dir, exist_ok=True)
-    _loc_files = ["location_model_Fastball_Left.joblib","location_model_Fastball_Right.joblib",
-                  "location_model_Sinker_Left.joblib","location_model_Sinker_Right.joblib",
-                  "location_model_Cutter_Left.joblib","location_model_Cutter_Right.joblib",
-                  "location_model_Slider_Left.joblib","location_model_Slider_Right.joblib",
-                  "location_model_Curveball_Left.joblib","location_model_Curveball_Right.joblib",
-                  "location_model_Changeup_Left.joblib","location_model_Changeup_Right.joblib"]
-    for _lf in _loc_files:
-        _llocal = os.path.join(_loc_dir, _lf)
-        if _HF_TOKEN and (not os.path.exists(_llocal) or os.path.getsize(_llocal) < 1000):
-            import shutil as _shutil
-            print(f"Downloading {_lf}...")
-            _shutil.copy(_hf_dl(repo_id=_HF_REPO, filename=f"loc_model/{_lf}", repo_type="model", token=_HF_TOKEN), _llocal)
+    if _HF_TOKEN:
+        for _mf in ["FB_model.pkl", "BB_model.pkl", "OS_model.pkl", "xslg_model.pkl"]:
+            print(f"Loading {_mf} from HF Hub cache...")
+            _HF_CACHED[_mf] = _hf_dl(repo_id=_HF_REPO, filename=_mf, repo_type="model", token=_HF_TOKEN)
+        for _lf in _loc_files:
+            _HF_CACHED[f"loc_model/{_lf}"] = _hf_dl(repo_id=_HF_REPO, filename=f"loc_model/{_lf}", repo_type="model", token=_HF_TOKEN)
 except Exception as _e:
-    print(f"HF model download error: {_e}")
+    print(f"HF model load error: {_e}")
 
 _xslg_model = None
 try:
     import pickle as _pickle
     _xslg_paths = [
+        _HF_CACHED.get("xslg_model.pkl", ""),
         "xslg_model.pkl",
         os.path.join(os.path.dirname(__file__), "xslg_model.pkl"),
     ]
@@ -1219,9 +1217,9 @@ _stuff_models = {}   # {model_name: model}  keys: 'fb','bb','os'
 _loc_models   = {}   # {(pitch_group, side): model}
 
 _STUFF_MODEL_PATHS = {
-    "fb": ["/Users/jab/realstuff/pitching_plus_models/FB_pitching_plus_bundle.pkl", "FB_model.pkl", os.path.join(os.path.dirname(__file__), "FB_model.pkl")],
-    "bb": ["/Users/jab/realstuff/pitching_plus_models/BB_pitching_plus_bundle.pkl", "BB_model.pkl", os.path.join(os.path.dirname(__file__), "BB_model.pkl")],
-    "os": ["/Users/jab/realstuff/pitching_plus_models/OS_pitching_plus_bundle.pkl", "OS_model.pkl", os.path.join(os.path.dirname(__file__), "OS_model.pkl")],
+    "fb": [_HF_CACHED.get("FB_model.pkl", ""), "/Users/jab/realstuff/pitching_plus_models/FB_pitching_plus_bundle.pkl", "FB_model.pkl", os.path.join(os.path.dirname(__file__), "FB_model.pkl")],
+    "bb": [_HF_CACHED.get("BB_model.pkl", ""), "/Users/jab/realstuff/pitching_plus_models/BB_pitching_plus_bundle.pkl", "BB_model.pkl", os.path.join(os.path.dirname(__file__), "BB_model.pkl")],
+    "os": [_HF_CACHED.get("OS_model.pkl", ""), "/Users/jab/realstuff/pitching_plus_models/OS_pitching_plus_bundle.pkl", "OS_model.pkl", os.path.join(os.path.dirname(__file__), "OS_model.pkl")],
 }
 _LOC_MODEL_DIR_PATHS = ["/Users/jab/realstuff/loc_model", "loc_model", os.path.join(os.path.dirname(__file__), "loc_model")]
 _MLB_REF_STATS_PATHS = ["/Users/jab/realstuff/pitching_plus_models/mlb_ref_stats.json"]
@@ -1246,17 +1244,28 @@ for _key, _paths in _STUFF_MODEL_PATHS.items():
                 print(f"Stuff+ {_key} load error: {_e}")
             break
 
-for _loc_dir in _LOC_MODEL_DIR_PATHS:
-    if os.path.isdir(_loc_dir):
-        for _pname in _PITCH_TYPE_MAPPING:
-            for _side in ["Left", "Right"]:
-                _mp = os.path.join(_loc_dir, f"location_model_{_pname}_{_side}.joblib")
-                if os.path.exists(_mp):
-                    try:
-                        _loc_models[(_pname, _side)] = _joblib.load(_mp)
-                    except Exception as _e:
-                        print(f"Loc model {_pname}/{_side} load error: {_e}")
-        break
+for _lf in _loc_files:
+    _cached_lf = _HF_CACHED.get(f"loc_model/{_lf}")
+    if _cached_lf and os.path.exists(_cached_lf):
+        _parts = _lf.replace(".joblib", "").split("_")
+        _pname_lf, _side_lf = _parts[2], _parts[3]
+        try:
+            _loc_models[(_pname_lf, _side_lf)] = _joblib.load(_cached_lf)
+        except Exception as _e:
+            print(f"Loc model {_pname_lf}/{_side_lf} load error: {_e}")
+
+if not _loc_models:
+    for _loc_dir in _LOC_MODEL_DIR_PATHS:
+        if os.path.isdir(_loc_dir):
+            for _pname in _PITCH_TYPE_MAPPING:
+                for _side in ["Left", "Right"]:
+                    _mp = os.path.join(_loc_dir, f"location_model_{_pname}_{_side}.joblib")
+                    if os.path.exists(_mp):
+                        try:
+                            _loc_models[(_pname, _side)] = _joblib.load(_mp)
+                        except Exception as _e:
+                            print(f"Loc model {_pname}/{_side} load error: {_e}")
+            break
 
 _mlb_ref_stats = {}
 for _rp in _MLB_REF_STATS_PATHS:
