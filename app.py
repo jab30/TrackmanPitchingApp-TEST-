@@ -1147,10 +1147,9 @@ def simple_kde(data, x_range, bandwidth=None):
     return density
 
 # ── HF Hub model cache (stored in ~/.cache/huggingface, survives container restarts) ──
-# Keys are HF filenames; values are local cache paths returned by hf_hub_download.
-# hf_hub_download checks its cache before hitting the network, so same-container
-# restarts skip the download entirely. Never copy to the project dir (it's re-cloned
-# from git on every restart, making any copies there useless).
+# _hf_load tries local_files_only=True first (zero network), falls back to download
+# only on a genuine cache miss. Same-container restarts are instant after the first load.
+# Never copy files into the project dir — it's re-cloned from git on every restart.
 _HF_CACHED = {}
 _loc_files = ["location_model_Fastball_Left.joblib","location_model_Fastball_Right.joblib",
               "location_model_Sinker_Left.joblib","location_model_Sinker_Right.joblib",
@@ -1158,16 +1157,24 @@ _loc_files = ["location_model_Fastball_Left.joblib","location_model_Fastball_Rig
               "location_model_Slider_Left.joblib","location_model_Slider_Right.joblib",
               "location_model_Curveball_Left.joblib","location_model_Curveball_Right.joblib",
               "location_model_Changeup_Left.joblib","location_model_Changeup_Right.joblib"]
+def _hf_load(repo, filename, token):
+    """Load a file from HF Hub, using local cache when available (no network round-trip)."""
+    from huggingface_hub import hf_hub_download as _dl
+    kw = dict(repo_id=repo, filename=filename, repo_type="model", token=token)
+    try:
+        return _dl(**kw, local_files_only=True)
+    except Exception:
+        print(f"Downloading {filename}...")
+        return _dl(**kw, local_files_only=False)
+
 try:
-    from huggingface_hub import hf_hub_download as _hf_dl
     _HF_REPO = "jab13/ksu-models"
     _HF_TOKEN = os.environ.get("HF_TOKEN", "")
     if _HF_TOKEN:
         for _mf in ["FB_model.pkl", "BB_model.pkl", "OS_model.pkl", "xslg_model.pkl"]:
-            print(f"Loading {_mf} from HF Hub cache...")
-            _HF_CACHED[_mf] = _hf_dl(repo_id=_HF_REPO, filename=_mf, repo_type="model", token=_HF_TOKEN)
+            _HF_CACHED[_mf] = _hf_load(_HF_REPO, _mf, _HF_TOKEN)
         for _lf in _loc_files:
-            _HF_CACHED[f"loc_model/{_lf}"] = _hf_dl(repo_id=_HF_REPO, filename=f"loc_model/{_lf}", repo_type="model", token=_HF_TOKEN)
+            _HF_CACHED[f"loc_model/{_lf}"] = _hf_load(_HF_REPO, f"loc_model/{_lf}", _HF_TOKEN)
 except Exception as _e:
     print(f"HF model load error: {_e}")
 
