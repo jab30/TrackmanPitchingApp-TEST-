@@ -1171,10 +1171,19 @@ try:
     _HF_REPO = "jab13/ksu-models"
     _HF_TOKEN = os.environ.get("HF_TOKEN", "")
     if _HF_TOKEN:
+        _here = os.path.dirname(__file__)
         for _mf in ["FB_model.pkl", "BB_model.pkl", "OS_model.pkl", "xslg_model.pkl"]:
-            _HF_CACHED[_mf] = _hf_load(_HF_REPO, _mf, _HF_TOKEN)
+            _local = os.path.join(_here, _mf)
+            if os.path.exists(_local) and os.path.getsize(_local) > 100_000:
+                _HF_CACHED[_mf] = _local  # real binary is already in the project dir
+            else:
+                _HF_CACHED[_mf] = _hf_load(_HF_REPO, _mf, _HF_TOKEN)
         for _lf in _loc_files:
-            _HF_CACHED[f"loc_model/{_lf}"] = _hf_load(_HF_REPO, f"loc_model/{_lf}", _HF_TOKEN)
+            _local = os.path.join(_here, "loc_model", _lf)
+            if os.path.exists(_local) and os.path.getsize(_local) > 1_000:
+                _HF_CACHED[f"loc_model/{_lf}"] = _local
+            else:
+                _HF_CACHED[f"loc_model/{_lf}"] = _hf_load(_HF_REPO, f"loc_model/{_lf}", _HF_TOKEN)
 except Exception as _e:
     print(f"HF model load error: {_e}")
 
