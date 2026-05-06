@@ -1254,7 +1254,10 @@ for _key, _paths in _STUFF_MODEL_PATHS.items():
     for _p in _paths:
         if os.path.exists(_p):
             try:
-                _stuff_models[_key] = _joblib.load(_p)
+                _raw = _joblib.load(_p)
+                # Bundle format: {"whiff_model": ..., "ev_model": ..., "features": [...]}
+                # Unwrap to the whiff classifier so callers get a uniform sklearn interface.
+                _stuff_models[_key] = _raw["whiff_model"] if isinstance(_raw, dict) else _raw
                 print(f"Stuff+ {_key} model loaded from {_p}")
             except Exception as _e:
                 print(f"Stuff+ {_key} load error: {_e}")
