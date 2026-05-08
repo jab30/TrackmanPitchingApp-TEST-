@@ -1466,9 +1466,20 @@ def _predict_location_plus(data: "pd.DataFrame") -> "pd.DataFrame":
         out = data.copy(); out["location_plus"] = np.nan; return out
 
     _comb = pd.concat(results, ignore_index=True)
-    _lmean = _comb["_pred_whiff"].mean()
-    _lstd  = _comb["_pred_whiff"].std()
-    _comb["location_plus"] = ((_comb["_pred_whiff"] - _lmean) / _lstd) * 10 + 100 if _lstd > 0 else 100.0
+
+    # Normalize within each pitch group so a sinker and slider at average
+    # locations both get 100, rather than sliders being inflated by their
+    # higher base whiff rates.
+    _comb["location_plus"] = np.nan
+    for _pname, _pitch_types in _PITCH_TYPE_MAPPING.items():
+        _mask = _comb["PitchType"].isin(_pitch_types)
+        _grp = _comb.loc[_mask, "_pred_whiff"]
+        if len(_grp) == 0:
+            continue
+        _lmean, _lstd = _grp.mean(), _grp.std()
+        _comb.loc[_mask, "location_plus"] = (
+            ((_grp - _lmean) / _lstd) * 10 + 100 if _lstd > 0 else 100.0
+        )
 
     # Apply pitcher adjustments
     if _pitcher_adjustments and "Pitcher" in _comb.columns:
