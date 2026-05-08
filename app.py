@@ -1382,6 +1382,32 @@ try:
 except Exception as _e:
     print(f"Stuff+ ref computation error: {_e}")
 
+# Pre-compute location+ reference distributions per pitch group from full df
+_loc_ref = {}  # {pitch_group: {"mean": float, "std": float}}
+try:
+    if (_loc_models or _loc_models_count) and "PitchType" in df.columns:
+        for _pname, _pitch_types in _PITCH_TYPE_MAPPING.items():
+            _ref_sub = df[df["PitchType"].isin(_pitch_types)].dropna(
+                subset=["PlateLocHeight","PlateLocSide","BatterSide"]).copy()
+            if len(_ref_sub) == 0:
+                continue
+            _ref_preds = []
+            for _side in ["Left","Right"]:
+                _ref_sd = _ref_sub[_ref_sub["BatterSide"] == _side]
+                if len(_ref_sd) == 0:
+                    continue
+                _lm = _loc_models.get((_pname, _side))
+                if _lm is None:
+                    continue
+                _X = _ref_sd[["PlateLocHeight","PlateLocSide"]].values
+                _ref_preds.extend(_lm.predict(_xgb.DMatrix(_X)).tolist())
+            if _ref_preds:
+                _arr = np.array(_ref_preds)
+                _loc_ref[_pname] = {"mean": float(_arr.mean()), "std": float(_arr.std())}
+                print(f"Loc+ ref {_pname}: mean={_arr.mean():.4f}, std={_arr.std():.4f}, n={len(_arr)}")
+except Exception as _e:
+    print(f"Loc+ ref computation error: {_e}")
+
 
 def _predict_stuff_plus(data: "pd.DataFrame") -> "pd.DataFrame":
     """Add stuff_plus column to a copy of data. Returns original rows with NaN if not computable."""
@@ -1467,16 +1493,20 @@ def _predict_location_plus(data: "pd.DataFrame") -> "pd.DataFrame":
 
     _comb = pd.concat(results, ignore_index=True)
 
-    # Normalize within each pitch group so a sinker and slider at average
-    # locations both get 100, rather than sliders being inflated by their
-    # higher base whiff rates.
+    # Normalize per pitch group using pre-computed population reference
+    # distributions (from full df at startup), so a single-pitcher session
+    # doesn't collapse to mean=100 for every pitch.
     _comb["location_plus"] = np.nan
     for _pname, _pitch_types in _PITCH_TYPE_MAPPING.items():
         _mask = _comb["PitchType"].isin(_pitch_types)
         _grp = _comb.loc[_mask, "_pred_whiff"]
         if len(_grp) == 0:
             continue
-        _lmean, _lstd = _grp.mean(), _grp.std()
+        _ref = _loc_ref.get(_pname)
+        if _ref and _ref["std"] > 0:
+            _lmean, _lstd = _ref["mean"], _ref["std"]
+        else:
+            _lmean, _lstd = _grp.mean(), _grp.std()
         _comb.loc[_mask, "location_plus"] = (
             ((_grp - _lmean) / _lstd) * 10 + 100 if _lstd > 0 else 100.0
         )
