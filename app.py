@@ -1228,9 +1228,21 @@ def _predict_xslg(exit_speeds, launch_angles):
 # ── Stuff+ / Location+ / Pitching+ models ────────────────────────────────────
 import joblib as _joblib
 import xgboost as _xgb
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(__file__))
+try:
+    import pitcher_adjustments as _pitcher_adj_module
+    import batter_clustering as _batter_clust_module
+except ImportError:
+    _pitcher_adj_module = None
+    _batter_clust_module = None
+    print("Warning: pitcher_adjustments or batter_clustering modules not found")
 
 _stuff_models = {}   # {model_name: model}  keys: 'fb','bb','os'
 _loc_models   = {}   # {(pitch_group, side): model}
+_loc_models_count = {}   # {(pitch_group, side, count): model} - count-aware models
+_pitcher_adjustments = {}   # {pitcher_id: {pitch_type: {location_bin: delta}}}
+_batter_clusters = {}   # {batter_id: cluster_id}
 
 _STUFF_MODEL_PATHS = {
     "fb": [_HF_CACHED.get("FB_model.pkl", ""), "/Users/jab/realstuff/pitching_plus_models/FB_pitching_plus_bundle.pkl", "FB_model.pkl", os.path.join(os.path.dirname(__file__), "FB_model.pkl")],
@@ -1285,6 +1297,54 @@ if not _loc_models:
                         except Exception as _e:
                             print(f"Loc model {_pname}/{_side} load error: {_e}")
             break
+
+# Load count-aware location models (if available)
+for _loc_dir in _LOC_MODEL_DIR_PATHS:
+    if os.path.isdir(_loc_dir):
+        import glob as _glob_module
+        for _model_file in _glob_module.glob(os.path.join(_loc_dir, "location_model_*_*_*.joblib")):
+            try:
+                _parts = os.path.basename(_model_file).replace("location_model_", "").replace(".joblib", "").split("_")
+                if len(_parts) == 3:
+                    _pname, _side, _count = _parts[0], _parts[1], _parts[2]
+                    _loc_models_count[(_pname, _side, _count)] = _joblib.load(_model_file)
+            except Exception as _e:
+                pass  # Silently skip invalid model files
+        break
+
+# Load pitcher adjustments
+_pitcher_adj_paths = [
+    "/Users/jab/realstuff/pitcher_loc_adjustments.json",
+    "pitcher_loc_adjustments.json",
+    os.path.join(os.path.dirname(__file__), "pitcher_loc_adjustments.json")
+]
+for _path in _pitcher_adj_paths:
+    if os.path.exists(_path):
+        try:
+            import json as _json_module
+            with open(_path) as _f:
+                _pitcher_adjustments = _json_module.load(_f)
+            print(f"Pitcher adjustments loaded: {len(_pitcher_adjustments)} pitchers")
+            break
+        except Exception as _e:
+            print(f"Pitcher adjustments load error: {_e}")
+
+# Load batter clusters
+_batter_clust_paths = [
+    "/Users/jab/realstuff/batter_clusters.json",
+    "batter_clusters.json",
+    os.path.join(os.path.dirname(__file__), "batter_clusters.json")
+]
+for _path in _batter_clust_paths:
+    if os.path.exists(_path):
+        try:
+            import json as _json_module
+            with open(_path) as _f:
+                _batter_clusters = _json_module.load(_f)
+            print(f"Batter clusters loaded: {len(_batter_clusters)} batters")
+            break
+        except Exception as _e:
+            print(f"Batter clusters load error: {_e}")
 
 _mlb_ref_stats = {}
 for _rp in _MLB_REF_STATS_PATHS:
@@ -1354,30 +1414,82 @@ def _predict_stuff_plus(data: "pd.DataFrame") -> "pd.DataFrame":
     return out
 
 
+def _derive_count_from_pitch(data: "pd.DataFrame") -> "pd.DataFrame":
+    """Derive count from PitchofPA or PitchNo."""
+    d = data.copy()
+    if "Count" not in d.columns:
+        if "PitchofPA" in d.columns:
+            _pitch_count_map = {1: "0-0", 2: "0-1", 3: "0-2", 4: "1-2", 5: "2-2"}
+            d["Count"] = d["PitchofPA"].map(_pitch_count_map).fillna("2-2")
+        else:
+            d["Count"] = "0-0"  # Default fallback
+    return d
+
+
 def _predict_location_plus(data: "pd.DataFrame") -> "pd.DataFrame":
-    """Add location_plus column. Uses pitch-group × batter-side location models."""
+    """Add location_plus column. Uses pitch-group × batter-side location models.
+
+    Tries count-aware models first, falls back to base models.
+    Applies pitcher adjustments if available.
+    """
     if not _loc_models or data.empty:
         out = data.copy(); out["location_plus"] = np.nan; return out
+
+    data = _derive_count_from_pitch(data)
     results = []
+
     for _pname, _pitch_types in _PITCH_TYPE_MAPPING.items():
         _pdata = data[data["PitchType"].isin(_pitch_types)].dropna(
             subset=["PlateLocHeight","PlateLocSide","BatterSide"]).copy()
         for _side in ["Left","Right"]:
-            _lm = _loc_models.get((_pname, _side))
-            if _lm is None:
-                continue
             _sd = _pdata[_pdata["BatterSide"]==_side].copy()
             if len(_sd) == 0:
                 continue
-            _X = _sd[["PlateLocHeight","PlateLocSide"]].values
-            _sd["_pred_whiff"] = _lm.predict(_xgb.DMatrix(_X))
-            results.append(_sd)
+
+            # Group by count to use count-specific models
+            for _count in _sd["Count"].unique():
+                _count_data = _sd[_sd["Count"] == _count].copy()
+
+                # Try count-aware model first, fall back to base model
+                _lm = _loc_models_count.get((_pname, _side, _count))
+                if _lm is None:
+                    _lm = _loc_models.get((_pname, _side))
+
+                if _lm is None:
+                    continue
+
+                _X = _count_data[["PlateLocHeight","PlateLocSide"]].values
+                _count_data["_pred_whiff"] = _lm.predict(_xgb.DMatrix(_X))
+                results.append(_count_data)
+
     if not results:
         out = data.copy(); out["location_plus"] = np.nan; return out
+
     _comb = pd.concat(results, ignore_index=True)
     _lmean = _comb["_pred_whiff"].mean()
     _lstd  = _comb["_pred_whiff"].std()
     _comb["location_plus"] = ((_comb["_pred_whiff"] - _lmean) / _lstd) * 10 + 100 if _lstd > 0 else 100.0
+
+    # Apply pitcher adjustments
+    if _pitcher_adjustments and "Pitcher" in _comb.columns:
+        for _idx, _row in _comb.iterrows():
+            _pitcher_id = str(_row.get("Pitcher"))
+            _pitch_type = _row.get("PitchType")
+            _height = _row.get("PlateLocHeight")
+            _side = _row.get("PlateLocSide")
+
+            if _pitcher_adj_module:
+                _adj_loc_plus = _pitcher_adj_module.adjust_location_plus(
+                    _comb.loc[_idx, "location_plus"],
+                    _pitcher_id,
+                    _pitch_type,
+                    _height,
+                    _side,
+                    _pitcher_adjustments,
+                    adjustment_scale=0.5,  # Scale adjustments to avoid over-correction
+                )
+                _comb.loc[_idx, "location_plus"] = _adj_loc_plus
+
     out = data.copy()
     out["location_plus"] = np.nan
     # merge back by index; _comb may not share index with data, re-merge on key cols
